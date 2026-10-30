@@ -1,0 +1,29 @@
+{
+  "_note": "Mock portfolio for the ENAM challenge. bse_code is used only for the BSE announcements fallback; run scripts/smoke_live.py to validate codes against live BSE data.",
+  "portfolio": [
+    {"symbol": "RELIANCE",   "bse_code": "500325", "name": "Reliance Industries",        "sector": "Energy & Conglomerate", "size": "Large"},
+    {"symbol": "HDFCBANK",   "bse_code": "500180", "name": "HDFC Bank",                  "sector": "Banking",               "size": "Large"},
+    {"symbol": "TCS",        "bse_code": "532540", "name": "Tata Consultancy Services",  "sector": "IT Services",           "size": "Large"},
+    {"symbol": "ITC",        "bse_code": "500875", "name": "ITC",                        "sector": "FMCG",                  "size": "Large"},
+    {"symbol": "LT",         "bse_code": "500510", "name": "Larsen & Toubro",            "sector": "Capital Goods",         "size": "Large"},
+    {"symbol": "SUNPHARMA",  "bse_code": "524715", "name": "Sun Pharmaceutical",         "sector": "Pharma",                "size": "Large"},
+    {"symbol": "BAJFINANCE", "bse_code": "500034", "name": "Bajaj Finance",              "sector": "NBFC",                  "size": "Large"},
+    {"symbol": "MARUTI",     "bse_code": "532500", "name": "Maruti Suzuki",              "sector": "Automobiles",           "size": "Large"},
+    {"symbol": "TATASTEEL",  "bse_code": "500470", "name": "Tata Steel",                 "sector": "Metals",                "size": "Large"},
+    {"symbol": "NTPC",       "bse_code": "532555", "name": "NTPC",                       "sector": "Power",                 "size": "Large"},
+    {"symbol": "APOLLOHOSP", "bse_code": "508869", "name": "Apollo Hospitals",           "sector": "Healthcare",            "size": "Large"},
+    {"symbol": "HAL",        "bse_code": "541154", "name": "Hindustan Aeronautics",      "sector": "Defence",               "size": "Large"},
+    {"symbol": "DIXON",      "bse_code": "540699", "name": "Dixon Technologies",         "sector": "Electronics Mfg",       "size": "Mid"},
+    {"symbol": "POLYCAB",    "bse_code": "542652", "name": "Polycab India",              "sector": "Cables & Wires",        "size": "Mid"},
+    {"symbol": "PERSISTENT", "bse_code": "533179", "name": "Persistent Systems",         "sector": "IT Services",           "size": "Mid"},
+    {"symbol": "DEEPAKNTR",  "bse_code": "506401", "name": "Deepak Nitrite",             "sector": "Chemicals",             "size": "Mid"},
+    {"symbol": "AFFLE",      "bse_code": "542752", "name": "Affle (India)",              "sector": "Ad-tech",               "size": "Small"},
+    {"symbol": "KAYNES",     "bse_code": "543664", "name": "Kaynes Technology",          "sector": "Electronics Mfg",       "size": "Small"}
+  ],
+  "research_demos": [
+    {"symbol": "ASIANPAINT", "name": "Asian Paints",          "why": "Margin pressure vs management's volume-growth narrative"},
+    {"symbol": "TRENT",      "name": "Trent",                 "why": "High-growth retailer; store-expansion guidance to test"},
+    {"symbol": "IRCTC",      "name": "IRCTC",                 "why": "Asset-light PSU; clean cash conversion case"},
+    {"symbol": "LALPATHLAB", "name": "Dr. Lal PathLabs",      "why": "Steady compounder; small enough to read end to end"}
+  ]
+}

@@ -1,0 +1,14 @@
+# Render blueprint: one Docker web service. Set FINN_LLM_API_KEY in the dashboard (sync: false keeps it out of git).
+services:
+  - type: web
+    name: finn
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: FINN_LLM_PROVIDER
+        value: gemini
+      - key: FINN_LLM_API_KEY
+        sync: false
+      - key: FINN_FIXTURE_MODE
+        value: "0"

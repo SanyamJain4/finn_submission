@@ -1,0 +1,182 @@
+[
+ {
+  "symbol": "DIXON",
+  "sm_name": "Dixon Technologies (India) Limited",
+  "desc": "Outcome of Board Meeting",
+  "attchmntText": "Dixon Technologies has informed the Exchange that the Board approved unaudited financial results for the quarter ended September 30, 2026.",
+  "sort_date": "-3h",
+  "an_dt": "",
+  "attchmntFile": "https://nsearchives.nseindia.com/corporate/FIXTURE_DIXON_RESULTS.pdf",
+  "seq_id": "fx1001"
+ },
+ {
+  "symbol": "POLYCAB",
+  "sm_name": "Polycab India Limited",
+  "desc": "Change in Management",
+  "attchmntText": "Polycab India Limited has informed the Exchange about appointment of Ms. Anjali Verma as Chief Financial Officer and resignation of Mr. Rohan Mehta as CFO.",
+  "sort_date": "-5h",
+  "an_dt": "",
+  "attchmntFile": "https://nsearchives.nseindia.com/corporate/FIXTURE_POLYCAB_CFO.pdf",
+  "seq_id": "fx1002"
+ },
+ {
+  "symbol": "HAL",
+  "sm_name": "Hindustan Aeronautics Limited",
+  "desc": "Press Release",
+  "attchmntText": "HAL has received an order of Rs. 2,450 crore for helicopter support services.",
+  "sort_date": "-7h",
+  "an_dt": "",
+  "attchmntFile": "https://nsearchives.nseindia.com/corporate/FIXTURE_HAL_ORDER.pdf",
+  "seq_id": "fx1003"
+ },
+ {
+  "symbol": "TATASTEEL",
+  "sm_name": "Tata Steel Limited",
+  "desc": "Credit Rating",
+  "attchmntText": "Tata Steel has informed the Exchange that CRISIL has reaffirmed the long-term rating at AA+/Stable.",
+  "sort_date": "-9h",
+  "an_dt": "",
+  "attchmntFile": "-",
+  "seq_id": "fx1004"
+ },
+ {
+  "symbol": "SUNPHARMA",
+  "sm_name": "Sun Pharmaceutical Industries Limited",
+  "desc": "Litigation / Dispute / Regulatory Action",
+  "attchmntText": "Sun Pharma has received a Warning Letter from US FDA for its Halol facility.",
+  "sort_date": "-11h",
+  "an_dt": "",
+  "attchmntFile": "-",
+  "seq_id": "fx1005"
+ },
+ {
+  "symbol": "ITC",
+  "sm_name": "ITC Limited",
+  "desc": "Board Meeting Intimation",
+  "attchmntText": "ITC Limited has informed the Exchange that a meeting of the Board will be held to consider financial results for the quarter ending September 2026.",
+  "sort_date": "-2h",
+  "an_dt": "",
+  "attchmntFile": "-",
+  "seq_id": "fx1006"
+ },
+ {
+  "symbol": "TCS",
+  "sm_name": "Tata Consultancy Services Limited",
+  "desc": "Analysts/Institutional Investor Meet/Con. Call Updates",
+  "attchmntText": "TCS has informed the Exchange about the transcript of the earnings call held on October 9, 2026.",
+  "sort_date": "-14h",
+  "an_dt": "",
+  "attchmntFile": "-",
+  "seq_id": "fx1007"
+ },
+ {
+  "symbol": "RELIANCE",
+  "sm_name": "Reliance Industries Limited",
+  "desc": "Certificate under SEBI (Depositories and Participants) Regulations, 2018",
+  "attchmntText": "Compliance certificate under Regulation 74(5).",
+  "sort_date": "-6h",
+  "an_dt": "",
+  "attchmntFile": "-",
+  "seq_id": "fx1008"
+ },
+ {
+  "symbol": "HDFCBANK",
+  "sm_name": "HDFC Bank Limited",
+  "desc": "Allotment of Securities",
+  "attchmntText": "HDFC Bank has allotted equity shares under ESOS to employees.",
+  "sort_date": "-8h",
+  "an_dt": "",
+  "attchmntFile": "-",
+  "seq_id": "fx1009"
+ },
+ {
+  "symbol": "MARUTI",
+  "sm_name": "Maruti Suzuki India Limited",
+  "desc": "Trading Window",
+  "attchmntText": "Closure of trading window.",
+  "sort_date": "-10h",
+  "an_dt": "",
+  "attchmntFile": "-",
+  "seq_id": "fx1010"
+ },
+ {
+  "symbol": "BAJFINANCE",
+  "sm_name": "Bajaj Finance Limited",
+  "desc": "Issue of Securities",
+  "attchmntText": "Bajaj Finance has issued Commercial Paper aggregating Rs. 500 crore.",
+  "sort_date": "-12h",
+  "an_dt": "",
+  "attchmntFile": "-",
+  "seq_id": "fx1011"
+ },
+ {
+  "symbol": "APOLLOHOSP",
+  "sm_name": "Apollo Hospitals Enterprise Limited",
+  "desc": "Acquisition",
+  "attchmntText": "Apollo Hospitals has informed about incorporation of a wholly owned subsidiary.",
+  "sort_date": "-15h",
+  "an_dt": "",
+  "attchmntFile": "-",
+  "seq_id": "fx1012"
+ },
+ {
+  "symbol": "NTPC",
+  "sm_name": "NTPC Limited",
+  "desc": "Copy of Newspaper Publication",
+  "attchmntText": "Newspaper publication of financial results.",
+  "sort_date": "-16h",
+  "an_dt": "",
+  "attchmntFile": "-",
+  "seq_id": "fx1013"
+ },
+ {
+  "symbol": "DEEPAKNTR",
+  "sm_name": "Deepak Nitrite Limited",
+  "desc": "Updates",
+  "attchmntText": "Deepak Nitrite has informed about commissioning of new phenol capacity of 200 KTPA at Dahej.",
+  "sort_date": "-18h",
+  "an_dt": "",
+  "attchmntFile": "-",
+  "seq_id": "fx1014"
+ },
+ {
+  "symbol": "KAYNES",
+  "sm_name": "Kaynes Technology India Limited",
+  "desc": "Shareholders meeting",
+  "attchmntText": "Notice of Postal Ballot for approval of related party transactions.",
+  "sort_date": "-20h",
+  "an_dt": "",
+  "attchmntFile": "-",
+  "seq_id": "fx1015"
+ },
+ {
+  "symbol": "PERSISTENT",
+  "sm_name": "Persistent Systems Limited",
+  "desc": "Change in Directorate",
+  "attchmntText": "Appointment of Mr. Arjun Rao as Independent Director.",
+  "sort_date": "-22h",
+  "an_dt": "",
+  "attchmntFile": "-",
+  "seq_id": "fx1016"
+ },
+ {
+  "symbol": "AFFLE",
+  "sm_name": "Affle (India) Limited",
+  "desc": "Disclosure under SEBI Takeover Regulations",
+  "attchmntText": "Disclosure under Regulation 29(2) by promoter group for sale of shares.",
+  "sort_date": "-23h",
+  "an_dt": "",
+  "attchmntFile": "-",
+  "seq_id": "fx1017"
+ },
+ {
+  "symbol": "LT",
+  "sm_name": "Larsen & Toubro Limited",
+  "desc": "Press Release",
+  "attchmntText": "L&T bags significant order (Rs. 1,000-2,500 crore) for power transmission in the Middle East.",
+  "sort_date": "-30h",
+  "an_dt": "",
+  "attchmntFile": "-",
+  "seq_id": "fx1018"
+ }
+]
