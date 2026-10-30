@@ -11,12 +11,13 @@ export interface MarketRow {
   status: string; as_of?: string; close?: number; day_change_pct?: number | null; signals: Signal[]
   volume_multiple?: number; volume_status?: string; spark: number[]; provider_status?: string; stale_note?: string
 }
+export interface SnapshotLabel { captured_at: string; sources: string[]; note: string }
 export interface SourceStatus { name: string; status: string; detail: string }
 export interface Feed {
   window: { start: string; end: string }; items: FeedItem[]
   counts: { tier: Record<Tier, number>; category: Record<string, number>; total: number }
   sources: SourceStatus[]; market: { provider: string | null; by_symbol: Record<string, MarketRow>; error?: string }
-  fixture: boolean
+  fixture: boolean; snapshot?: SnapshotLabel | null
 }
 export interface Comparison {
   label: string; current: number | null; prev_quarter: number | null; year_ago: number | null
@@ -38,7 +39,7 @@ export interface FilingDetail {
   item: FeedItem; document: { status: string; detail: string; pages: number } | null
   results: ResultsX | null; people: PeopleX | null; key_lines: { page: number; text: string }[]
   llm_summary: { summary: string; key_facts: string[]; grounded: boolean; unsupported_numbers: string[] } | null
-  notes: string[]
+  notes: string[]; snapshot?: SnapshotLabel | null
 }
 export interface AlertPrefs {
   categories: string[]; min_tier: Tier; price_move_pct: number; volume_multiple: number; volume_window: number
@@ -77,7 +78,7 @@ export interface Report {
   }
   verification: { llm_claims: number; verified: number; unverified: number; method: string }
   limitations: string[]; llm: { enabled: boolean; provider: string | null; calls_used: number; calls_budget: number }
-  fixture: boolean
+  fixture: boolean; snapshot?: SnapshotLabel | null
 }
 export interface Job { job_id: string | null; symbol: string; name?: string; status: 'running' | 'done' | 'error'; stage: string; stages_done: string[]; stages: string[]; error: string | null; report: Report | null; cached?: boolean }
 
@@ -116,5 +117,6 @@ export const api = {
   savePrefs: (p: AlertPrefs) => req<AlertPrefs>('/api/prefs/alerts', { method: 'PUT', body: JSON.stringify(p) }),
   search: (q: string) => req<{ results: { symbol: string; name: string; in_portfolio: boolean }[]; remote_error: string | null }>(`/api/search?q=${encodeURIComponent(q)}`),
   research: (query: string, force = false) => req<Job>('/api/research', { method: 'POST', body: JSON.stringify({ query, force }) }),
+  diagnostics: () => req<{ checked_at: string; probes: { name: string; ok: boolean; detail: string; ms: number }[]; snapshot: SnapshotLabel | null; snapshot_reports: string[] }>('/api/diagnostics'),
   job: (id: string) => req<Job>(`/api/research/jobs/${id}`),
 }

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, type GuidanceRow, type Job, type Report } from '../api'
 import { cr, metricValue, pct, plainPct, sign } from '../format'
-import { ClaimLine, ErrorNote, Sheet, jump } from '../ui'
+import { ClaimLine, ErrorNote, Sheet, SnapshotNote, jump } from '../ui'
 
 const STAGE_LABEL: Record<string, string> = {
   resolve: 'Finding the company', financials: 'Reading reported financials', documents: 'Fetching annual report and call transcripts',
@@ -104,6 +104,7 @@ function ReportView({ r, rerun }: { r: Report; rerun: () => void }) {
         <p className="muted small">{r.symbol}, {r.basis} figures{r.in_portfolio ? ', in your portfolio' : ''}</p>
         <h2 className="h1">{r.name}</h2>
         {s.headline && <p className="headline">{s.headline}</p>}
+        <SnapshotNote s={r.snapshot} />
       </header>
 
       <nav className="section-nav" aria-label="Report sections">

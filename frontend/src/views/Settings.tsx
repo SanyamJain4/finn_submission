@@ -12,6 +12,9 @@ export default function Settings() {
   const [port, setPort] = useState<Port | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const [diag, setDiag] = useState<Awaited<ReturnType<typeof api.diagnostics>> | null>(null)
+  const [diagBusy, setDiagBusy] = useState(false)
+  const runDiag = () => { setDiagBusy(true); api.diagnostics().then(setDiag).catch(e => setErr(e.message)).finally(() => setDiagBusy(false)) }
 
   useEffect(() => {
     api.prefs().then(setP).catch(e => setErr(e.message))
@@ -71,6 +74,22 @@ export default function Settings() {
               <div key={u.model}><dt>{u.model}</dt><dd>{u.calls} calls, {u.cache_hits} from cache, {(u.input_tokens + u.output_tokens).toLocaleString('en-IN')} tokens{u.errors ? `, ${u.errors} errors` : ''}</dd></div>
             ))}
           </dl>
+          <div className="row-actions"><button className="btn-ghost" onClick={runDiag} disabled={diagBusy}>{diagBusy ? 'Testing sources…' : 'Test data sources from this server'}</button></div>
+          {diag && (
+            <>
+              <ul className="diag">
+                {diag.probes.map(p => (
+                  <li key={p.name} className={p.ok ? 'ok' : 'bad'}>
+                    <span className="diag-name">{p.ok ? 'Reachable' : 'Blocked'}: {p.name}</span>
+                    <span className="muted small">{p.detail} ({p.ms} ms)</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="muted small">
+                {diag.snapshot ? `Fallback snapshot: captured ${new Date(diag.snapshot.captured_at).toLocaleString('en-IN')} from ${diag.snapshot.sources.join(', ')}${diag.snapshot_reports.length ? `; offline research for ${diag.snapshot_reports.join(', ')}` : ''}.` : 'No fallback snapshot deployed. Run scripts/make_snapshot.py on a machine that can reach the exchanges.'}
+              </p>
+            </>
+          )}
         </div>
       )}
 

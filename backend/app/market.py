@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from . import portfolio, storage
+from . import portfolio, snapshot, storage
 from .config import settings
 from .http import SourceError, fetch, make_client
 
@@ -82,6 +82,10 @@ def get_eod(symbols: list[str]) -> dict:
         for s in missing:  # recent total failure: don't hammer the provider on every feed refresh
             series[s] = storage.cache_get_stale(f"eod:{s}:last") or []
             status[s] = "error: provider unreachable (retrying in a few minutes)" + (" (showing last cached data)" if series[s] else "")
+            if not series[s] and snapshot.eod().get(s):
+                series[s], status[s] = snapshot.eod()[s], "snapshot"
+        if any(v == "snapshot" for v in status.values()):
+            provider = f"snapshot of Yahoo Finance, {snapshot.label()['captured_at'][:10]}"
         return {"series": series, "status": status, "provider": provider}
     if missing:
         try:  # yfinance has its own retry loop; bound it so a dead provider can't stall the feed
@@ -101,6 +105,9 @@ def get_eod(symbols: list[str]) -> dict:
                     series[s] = storage.cache_get_stale(f"eod:{s}:last") or []
                     if series[s]:
                         status[s] += " (showing last cached data)"
+                    elif snapshot.eod().get(s):
+                        series[s], status[s] = snapshot.eod()[s], "snapshot"
+                        provider = f"snapshot of Yahoo Finance, {snapshot.label()['captured_at'][:10]}"
                     continue
             series[s], status[s] = bars, "ok"
             got_any = True

@@ -272,3 +272,10 @@ q { quotes: '“' '”'; }
 
 .plain li { padding: 3px 0 3px 14px; position: relative; }
 .plain li::before { content: ''; position: absolute; left: 2px; top: 0.75em; width: 5px; height: 5px; border-radius: 50%; background: var(--faint); }
+
+.snapshot-note { font-size: var(--step--1); color: #3d4566; background: var(--indigo-wash); border-left: 3px solid var(--indigo); border-radius: 0 6px 6px 0; padding: 8px 12px; margin: 0 0 14px; }
+.diag { list-style: none; padding: 0; margin: 12px 0 8px; }
+.diag li { display: flex; flex-direction: column; gap: 2px; padding: 8px 0 8px 12px; border-left: 3px solid var(--rule); margin-bottom: 6px; }
+.diag li.ok { border-color: var(--green); }
+.diag li.bad { border-color: var(--red); }
+.diag-name { font-weight: 600; font-size: var(--step--1); }

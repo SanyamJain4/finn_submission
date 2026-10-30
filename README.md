@@ -50,7 +50,19 @@ One Docker image builds the React app and serves it from FastAPI.
 * **Render:** push the repo, choose "New → Blueprint", and it picks up `render.yaml`. Set `FINN_LLM_API_KEY` in the dashboard.
 * **Anywhere with Docker:** `docker build -t finn . && docker run -p 8000:8000 -e FINN_LLM_PROVIDER=gemini -e FINN_LLM_API_KEY=… finn`
 
-Note: NSE often blocks cloud-provider IP ranges. FINN falls back to BSE automatically and reports which source answered. If both are blocked from a host, the Today screen says so instead of showing an empty "quiet" day.
+### Hosting behind exchange IP blocks (important)
+
+NSE and BSE block most cloud and datacenter IP ranges (Render, Railway, AWS, GCP…), so a hosted FINN usually can't fetch filings itself. You'll see this as *"Couldn't reach the exchanges"*, and Settings → **Test data sources from this server** shows exactly which sources are blocked.
+
+FINN handles this with a **real-data snapshot**:
+
+```bash
+cd backend
+python ../scripts/make_snapshot.py      # run where NSE/BSE work, e.g. your laptop in India
+git add data/snapshot && git commit -m "Data snapshot" && git push
+```
+
+This captures the last 7 days of filings, EOD prices, the parsed details of the important filings, and research reports for the demo companies. When a live source fails, the server serves the snapshot and labels it ("Captured 31 Oct, 03:32 IST from BSE, Yahoo Finance"). The "last 24 hours" window is anchored to the capture time. Live sources are still tried first, so anything the host *can* reach (often Yahoo, Screener and the LLM) stays live. Research for a ticker outside the snapshot fails honestly and lists the companies that are available offline. Re-run the script to refresh.
 
 ## Tests
 

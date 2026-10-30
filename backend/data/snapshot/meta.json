@@ -1,0 +1,10 @@
+{
+ "captured_at": "2026-10-31T04:06:05+05:30",
+ "sources": [
+  "NSE",
+  "Yahoo Finance",
+  "Screener"
+ ],
+ "days": 7,
+ "llm": "gemini"
+}

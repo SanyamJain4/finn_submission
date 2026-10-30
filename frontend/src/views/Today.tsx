@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api, type Feed, type FeedItem, type Tier } from '../api'
 import { ago, catLabel, pct } from '../format'
-import { ErrorNote, Loading, Rail, Spark, jump } from '../ui'
+import { ErrorNote, Loading, Rail, SnapshotNote, Spark, jump } from '../ui'
 
 const WINDOWS = [
   { key: '24', label: '24 hours', hours: 24 },
@@ -33,6 +33,7 @@ export default function Today({ openFiling, openCompany }: { openFiling: (i: Fee
   const counts = { high: byTier('high').length, medium: byTier('medium').length, low: byTier('low').length }
   const moves = feed ? Object.entries(feed.market.by_symbol).filter(([, m]) => m.signals.length) : []
   const failed = feed?.sources.filter(s => s.status === 'error' || s.status === 'partial') || []
+  const onSnapshot = !!feed?.snapshot
   const filtered = company || category
 
   return (
@@ -58,7 +59,7 @@ export default function Today({ openFiling, openCompany }: { openFiling: (i: Fee
       {feed && (
         <>
           <p className={`brief${loading ? ' dim' : ''}`} aria-live="polite">
-            {feed.counts.total === 0 && failed.length === feed.sources.length && failed.length > 0 ? (
+            {feed.counts.total === 0 && !onSnapshot && failed.length === feed.sources.length && failed.length > 0 ? (
               <>Couldn’t reach the exchanges, so FINN can’t tell what changed.</>
             ) : feed.counts.total === 0 ? (
               <>Quiet window. Nothing filed by your portfolio companies.</>
@@ -71,7 +72,8 @@ export default function Today({ openFiling, openCompany }: { openFiling: (i: Fee
             )}
           </p>
 
-          {failed.length > 0 && (
+          <SnapshotNote s={feed.snapshot} />
+          {failed.length > 0 && !onSnapshot && (
             <p className="source-warn" role="status">
               {failed.map(s => `${s.name}: ${s.detail}`).join(' · ')}. Some filings may be missing.
             </p>

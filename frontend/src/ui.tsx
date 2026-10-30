@@ -2,7 +2,7 @@ import { useEffect, useRef, type ReactNode } from 'react'
 
 /** In-page jump that doesn't touch location.hash (the hash is the router). */
 export const jump = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' })
-import type { Claim, Evidence, Report, Tier } from './api'
+import type { Claim, Evidence, Report, SnapshotLabel, Tier } from './api'
 
 export function Spark({ data, up }: { data: number[]; up?: boolean }) {
   if (data.length < 2) return null
@@ -74,4 +74,14 @@ export function CiteChip({ id, report, onCite }: { id: string; report: Report; o
   const m = id.startsWith('M:') ? report.metrics[id.slice(2)] : undefined
   const label = id.startsWith('M:') ? (m ? m.label.replace(/\s*\(.*\)$/, '') : 'figure') : ev ? `${ev.source} p.${ev.page}` : id
   return <button className="cite" onClick={() => onCite(id)} aria-label={`Show evidence ${label}`}>{label}</button>
+}
+
+export function SnapshotNote({ s }: { s?: SnapshotLabel | null }) {
+  if (!s) return null
+  const when = new Date(s.captured_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })
+  return (
+    <p className="snapshot-note" role="note">
+      Captured {when} IST from {s.sources.join(', ') || 'live sources'}. This server is blocked by the exchanges, so it shows the latest real snapshot.
+    </p>
+  )
 }
