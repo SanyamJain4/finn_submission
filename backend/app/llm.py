@@ -50,6 +50,15 @@ class LLMUnavailable(LLMError):
     pass
 
 
+def public_message(e: Exception) -> str:
+    """Short, user-facing reason for an LLM failure; the full detail stays in the logs and llm_calls table."""
+    if isinstance(e, LLMUnavailable):
+        return "no AI model is configured"
+    if "rejected the key" in str(e):
+        return "the AI provider rejected the configured key"
+    return "the AI service is busy or unreachable right now"
+
+
 _GEM_RE = re.compile(r"^gemini-(\d+(?:\.\d+)?)-(flash-lite|flash|pro)(-.+)?$")
 _BAD_SUFFIX = re.compile(r"live|tts|audio|image|embed|thinking|exp|native|computer")
 
@@ -172,11 +181,17 @@ def _call_provider(model: str, system: str, prompt: str, max_tokens: int) -> tup
             return text, u.get("input_tokens"), u.get("output_tokens")
         if p == "openai":
             base = settings.llm_base_url or "https://api.openai.com/v1"
-            r = c.post(f"{base}/chat/completions", headers={"Authorization": f"Bearer {key}"}, json={
+            body = {
                 "model": model, "temperature": 0, "max_tokens": max_tokens,
                 "response_format": {"type": "json_object"},
                 "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
-            })
+            }
+            r = c.post(f"{base}/chat/completions", headers={"Authorization": f"Bearer {key}"}, json=body)
+            if r.status_code == 400:
+                # Some OpenAI-compatible hosts (e.g. Hugging Face providers) reject response_format; the prompt
+                # already demands JSON and _extract_json copes with fences, so retry without it.
+                body.pop("response_format")
+                r = c.post(f"{base}/chat/completions", headers={"Authorization": f"Bearer {key}"}, json=body)
             r.raise_for_status()
             d = r.json()
             u = d.get("usage", {})
@@ -226,7 +241,7 @@ def complete_json(schema: type[T], prompt: str, *, tier: str = "fast", purpose: 
                 msg = _provider_message(e)
                 storage.log_llm_call(purpose, model, False, None, None, False, f"HTTP {code} {msg}"[:300])
                 if code in (401, 403):
-                    raise LLMError(f"Gemini rejected the API key (HTTP {code}): {msg}") from e
+                    raise LLMError(f"The AI provider ({settings.llm_provider}) rejected the key (HTTP {code}): {msg}") from e
                 if code == 429 and attempt < 2:
                     time.sleep(6 * (attempt + 1))  # free tiers rate-limit per minute
                     continue

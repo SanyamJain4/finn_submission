@@ -199,7 +199,7 @@ def answer(req: CopilotReq) -> dict:
         out = llm.complete_json(Answer, tier="smart", purpose="copilot", max_tokens=1500, prompt=prompt, cache_ttl_s=3600)
     except llm.LLMError as e:
         return {"blocks": [], "sources": public, "actions": actions, "origin": "error", "missing": [], "follow_ups": [],
-                "note": f"The AI model didn't answer ({e}). The sources FINN found are listed below."}
+                "note": f"The AI model didn't answer ({llm.public_message(e)}). The sources FINN found are listed below."}
     blocks = []
     for b in out.blocks:
         cites = [c for c in b.cites if c in by_id]

@@ -36,7 +36,7 @@ TRUSTED_HOSTS = {
 
 _MIN_INTERVAL = {"www.nseindia.com": 0.8, "api.bseindia.com": 0.5, "www.screener.in": 1.0}
 _last_hit: dict[str, float] = {}
-# Circuit breaker: after 3 consecutive network-level failures a host is skipped for 2 minutes, so an outage
+# Circuit breaker: after 3 consecutive network-level failures (or HTTP 403s) a host is skipped for 2 minutes, so an outage
 # costs one slow request instead of one per company.
 _breaker: dict[str, tuple[int, float]] = {}
 BREAK_AFTER, BREAK_FOR_S = 3, 120.0
@@ -115,6 +115,11 @@ def fetch(client: httpx.Client, url: str, source: str, *, params: dict | None = 
             return r
         except SourceError as e:
             last_exc = e
+            if e.status == 403:
+                # Hosted IPs get 403 from NSE/BSE on every call; treat it like an outage so the feed falls back
+                # to the snapshot after a few calls instead of crawling through every company at 0.5s each.
+                n = _breaker.get(host, (0, 0.0))[0] + 1
+                _breaker[host] = (n, time.time() + BREAK_FOR_S if n >= BREAK_AFTER else 0.0)
             if e.status is not None and 400 <= e.status < 500 and e.status != 429:
                 break
         except (httpx.TimeoutException, httpx.TransportError) as e:
