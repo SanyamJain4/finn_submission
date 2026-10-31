@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react'
+import type React from 'react'
 
 /** In-page jump that doesn't touch location.hash (the hash is the router). */
 export const jump = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' })
@@ -83,5 +84,78 @@ export function SnapshotNote({ s }: { s?: SnapshotLabel | null }) {
     <p className="snapshot-note" role="note">
       Captured {when} IST from {s.sources.join(', ') || 'live sources'}. This server is blocked by the exchanges, so it shows the latest real snapshot.
     </p>
+  )
+}
+
+export function Skeleton({ lines = 3, className = '' }: { lines?: number; className?: string }) {
+  return (
+    <div className={`skel-group ${className}`} aria-hidden>
+      {Array.from({ length: lines }, (_, i) => <span key={i} className="skel" style={{ width: `${92 - (i % 3) * 18}%` }} />)}
+    </div>
+  )
+}
+
+/** Horizontal stacked share bar + legend (allocation). Tooltips via <title>; values also listed as text. */
+const PALETTE = ['#3a3fd1', '#7f84e6', '#147a57', '#9a6a08', '#b42318', '#5e687a', '#2f8fb3', '#a24fb0', '#c2a000', '#8a93a3']
+export function ShareBar({ items, label }: { items: { name: string; pct: number }[]; label: string }) {
+  return (
+    <figure className="sharebar" aria-label={label}>
+      <svg viewBox="0 0 100 6" preserveAspectRatio="none" role="img" aria-hidden>
+        {items.reduce<{ x: number; els: React.ReactElement[] }>((acc, it, i) => {
+          acc.els.push(<rect key={it.name} x={acc.x} y={0} width={Math.max(it.pct, 0.4)} height={6} fill={PALETTE[i % PALETTE.length]}><title>{`${it.name}: ${it.pct.toFixed(1)}%`}</title></rect>)
+          acc.x += it.pct
+          return acc
+        }, { x: 0, els: [] }).els}
+      </svg>
+      <figcaption>
+        <ul className="legend">
+          {items.map((it, i) => <li key={it.name}><span className="swatch" style={{ background: PALETTE[i % PALETTE.length] }} />{it.name}<b>{it.pct.toFixed(1)}%</b></li>)}
+        </ul>
+      </figcaption>
+    </figure>
+  )
+}
+
+/** Simple labelled bar chart with optional second series as a line (e.g. revenue bars + margin line). */
+export function BarLine({ data, barKey, lineKey, barLabel, lineLabel, fmtBar, fmtLine, height = 150 }: {
+  data: Record<string, number | string | null>[]; barKey: string; lineKey?: string; barLabel: string; lineLabel?: string
+  fmtBar: (v: number) => string; fmtLine?: (v: number) => string; height?: number
+}) {
+  const W = 320, H = height, pad = { l: 6, r: 6, t: 18, b: 22 }
+  const bars = data.map(d => (typeof d[barKey] === 'number' ? (d[barKey] as number) : null))
+  const lines = lineKey ? data.map(d => (typeof d[lineKey] === 'number' ? (d[lineKey] as number) : null)) : []
+  const bmax = Math.max(...bars.map(v => Math.abs(v ?? 0)), 1)
+  const anyNeg = bars.some(v => (v ?? 0) < 0)
+  const zero = anyNeg ? pad.t + (H - pad.t - pad.b) / 2 : H - pad.b
+  const span = anyNeg ? (H - pad.t - pad.b) / 2 : H - pad.t - pad.b
+  const bw = (W - pad.l - pad.r) / data.length
+  const lv = lines.filter((v): v is number => v != null)
+  const lmin = Math.min(...lv), lmax = Math.max(...lv)
+  const ly = (v: number) => pad.t + 4 + (1 - (v - lmin) / (lmax - lmin || 1)) * (H - pad.t - pad.b - 14)
+  return (
+    <figure className="chart">
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${barLabel}${lineLabel ? ` and ${lineLabel}` : ''} by period`}>
+        <line x1={pad.l} x2={W - pad.r} y1={zero} y2={zero} className="axis" />
+        {data.map((d, i) => {
+          const v = bars[i]
+          if (v == null) return null
+          const h = Math.abs(v) / bmax * span
+          const x = pad.l + i * bw + bw * 0.18
+          return (
+            <g key={i}>
+              <rect x={x} width={bw * 0.64} y={v >= 0 ? zero - h : zero} height={Math.max(h, 1)} rx={2} className={v >= 0 ? 'bar' : 'bar neg'}>
+                <title>{`${d.period}: ${barLabel} ${fmtBar(v)}${lineKey && lines[i] != null ? `, ${lineLabel} ${fmtLine!(lines[i]!)}` : ''}`}</title>
+              </rect>
+              <text x={x + bw * 0.32} y={H - 7} className="tick">{String(d.period).replace(/^Q(\d) FY/, 'Q$1 ')}</text>
+            </g>
+          )
+        })}
+        {lineKey && lv.length > 1 && (
+          <polyline className="line" points={lines.map((v, i) => (v == null ? '' : `${pad.l + i * bw + bw / 2},${ly(v)}`)).filter(Boolean).join(' ')} />
+        )}
+        {lineKey && lines.map((v, i) => v == null ? null : <circle key={i} cx={pad.l + i * bw + bw / 2} cy={ly(v)} r={2.6} className="dot"><title>{`${data[i].period}: ${lineLabel} ${fmtLine!(v)}`}</title></circle>)}
+      </svg>
+      <figcaption className="muted small"><span className="key-bar" /> {barLabel}{lineKey && <> <span className="key-line" /> {lineLabel}</>}</figcaption>
+    </figure>
   )
 }

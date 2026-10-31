@@ -72,7 +72,7 @@ class Synthesis(BaseModel):
 def start(query: str, force: bool = False) -> dict:
     sym = resolve(query)
     if not force:
-        cached = storage.cache_get(f"report:{sym['symbol']}")
+        cached = storage.cache_get(f"report:v2:{sym['symbol']}")
         if cached:
             return {"job_id": None, "status": "done", "report": cached, "cached": True}
     with _jobs_lock:
@@ -128,7 +128,7 @@ def _run(job: dict) -> None:
         job["report"] = rep
         job["status"] = "done"
         _stage(job, "")
-        storage.cache_set(f"report:{job['symbol']}", rep, 24 * 3600)
+        storage.cache_set(f"report:v2:{job['symbol']}", rep, 24 * 3600)
     except SourceError as e:
         snap = snapshot.report(job["symbol"])
         if snap:

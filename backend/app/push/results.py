@@ -18,10 +18,13 @@ from .. import finance
 
 NUM = r"\(?-?\d[\d,]*(?:\.\d+)?\)?|(?<!\w)[-–—](?!\w)"
 NUM_RE = re.compile(NUM)
-FORMULA_RE = re.compile(r"\(\s*[\dIVXivx]+\s*[-+±]\s*[\dIVXivx]+(?:\s*[-+]\s*[\dIVXivx]+)*\s*\)")
-NOTE_RE = re.compile(r"\((?:refer\s+)?note\s*(?:no\.?\s*)?\d+[a-z]?\)|note\s+\d+", re.I)
+# Row formulas such as "(5-6)", "{1-2)", "[III+IV]", OCR'd "(Ill-IV)" - any bracket style, roman or arabic.
+FORMULA_RE = re.compile(r"[({\[]\s*[\dIVXLivxl]+\s*[-+±]\s*[\dIVXLivxl]+(?:\s*[-+]\s*[\dIVXLivxl]+)*\s*[)}\]]")
+NOTE_RE = re.compile(r"\((?:refer\s+)?notes?\b[^)]*\)|notes?\s+\d+(?:\s*(?:and|&|,)\s*\d+)*", re.I)
+SPLIT_THOUSANDS_RE = re.compile(r"(\d)\s+,(\d{3})")      # "31 ,593.7" -> "31,593.7" (spacing artefact)
+AMOUNT_LIKE = re.compile(r"[,.]|\d{3,}")
 DATE_RE = re.compile(
-    r"(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})|(\d{1,2})[\s-]+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*[\s,-]+(\d{4})|"
+    r"(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})|(\d{1,2})[\s-]+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*[\s,-]+(\d{4}|\d{2}\b)|"
     r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(\d{1,2}),?\s+(\d{4})", re.I)
 MONTHS = {m: i for i, m in enumerate("jan feb mar apr may jun jul aug sep oct nov dec".split(), 1)}
 
@@ -81,9 +84,14 @@ def _parse_date(m: re.Match) -> date | None:
 
 
 def _numbers_after(text: str) -> list[float]:
+    text = SPLIT_THOUSANDS_RE.sub(r"\1,\2", text)
     text = NOTE_RE.sub(" ", FORMULA_RE.sub(" ", text))
+    toks = NUM_RE.findall(text)
+    # Drop leading 1-2 digit integers before the first amount-like token: serial numbers, note refs, stray formula bits.
+    while toks and not AMOUNT_LIKE.search(toks[0]) and toks[0].strip("()-–— ").isdigit() and len(toks) > 3:
+        toks = toks[1:]
     vals = []
-    for tok in NUM_RE.findall(text):
+    for tok in toks:
         v = finance.parse_number(tok)
         if v is not None:
             vals.append(v)
@@ -107,13 +115,14 @@ def _is_results_page(page: str) -> bool:
 def _find_rows(page_text: str, page_no: int) -> dict[str, Row]:
     lines = page_text.split("\n")
     found: dict[str, Row] = {}
+    label_len: dict[str, int] = {}
     for i, line in enumerate(lines):
         stripped = re.sub(r"^\s*(?:\d{1,2}|[ivxIVX]{1,4}|\(?[a-hA-H]\))[\s.)]+", "", line).strip()
         low = stripped.lower()
         for key, pats in ROW_PATTERNS.items():
-            if key in found:
-                continue
-            for p in pats:
+            if key in found and label_len[key] <= 25:
+                continue  # already have a tight match, e.g. "Finance costs"
+            for pi, p in enumerate(pats):
                 m = re.search(p, low)
                 if not m:
                     continue
@@ -124,10 +133,13 @@ def _find_rows(page_text: str, page_no: int) -> dict[str, Row]:
                 if len(vals) < 3 and i + 1 < len(lines):
                     nxt = lines[i + 1]
                     nv = _numbers_after(nxt)
-                    if len(nv) >= 3 and len(re.sub(NUM, "", nxt).strip()) < 40:
+                    if len(nv) >= 3 and len(re.sub(NUM, "", nxt).strip()) < 12:  # a bare continuation line, not the next row
                         vals, raw = nv, raw + " / " + nxt.strip()
                 if len(vals) >= 3:
-                    found[key] = Row(key, page_no, raw[:300], vals)
+                    lbl_len = len(re.sub(NUM, "", stripped[:m.end() + 40]).strip()) + 100 * pi
+                    if key not in found or lbl_len < label_len[key]:
+                        found[key] = Row(key, page_no, raw[:300], vals)
+                        label_len[key] = lbl_len
                 break
     return found
 
@@ -146,16 +158,25 @@ def _detect_columns(page_text: str) -> tuple[list[date], str]:
 
 def extract_results(pages: list[str]) -> ResultsExtraction:
     candidates = [(i + 1, p) for i, p in enumerate(pages) if _is_results_page(p)]
+    empty = sum(1 for p in pages if len(p.strip()) < 40)
     if not candidates:
+        if pages and empty / len(pages) >= 0.5:
+            return ResultsExtraction("not_found", notes=[f"{empty} of {len(pages)} pages are scanned images with no text layer; FINN doesn't OCR, so open the filing for the numbers."])
         return ResultsExtraction("not_found", notes=["No results table found in the filing text."])
     by_basis: dict[str, list] = {"consolidated": [], "standalone": [], None: []}
     for n, p in candidates:
         by_basis[_page_basis(p)].append((n, p))
+    first_unreliable: ResultsExtraction | None = None
     for basis in ("consolidated", "standalone", None):
         for page_no, text in by_basis[basis]:
             rows = _find_rows(text, page_no)
             if {"revenue", "pbt"} <= rows.keys() or {"revenue", "pat"} <= rows.keys():
-                return _build(rows, text, page_no, basis)
+                r = _build(rows, text, page_no, basis)
+                if r.status != "unreliable":
+                    return r
+                first_unreliable = first_unreliable or r
+    if first_unreliable:
+        return first_unreliable
     return ResultsExtraction("not_found", notes=["Results pages found but key rows (revenue/PBT/PAT) could not be parsed."])
 
 
@@ -224,6 +245,43 @@ def _build(rows: dict[str, Row], text: str, page_no: int, basis: str | None) -> 
         notes.append("Could not tell whether this table is consolidated or standalone.")
 
     evidence = [{"metric": r.key, "page": r.page, "row": r.raw, "values_as_reported": r.values[:3]} for r in rows.values()]
+    problems = sanity_problems(metrics, rows, bank)
+    if problems:
+        return ResultsExtraction("unreliable", basis, unit_src, periods, {}, evidence, notes + [
+            "Numbers withheld: they failed FINN's consistency checks (" + "; ".join(problems) + "). "
+            "The PDF is probably scanned/OCR'd or laid out unusually. Open the original filing."])
+    e = metrics["ebitda"]
+    if e["current"] is not None and metrics["revenue"]["current"]:
+        if not (-100 < (e.get("margin_current") or 0) < 100) or (e["year_ago"] is not None and e["current"] and not 0.2 < abs(e["current"] / (e["year_ago"] or 1e-9)) < 5):
+            metrics["ebitda"] = {"label": "EBITDA", "derived": True, "formula": e["formula"], **finance.comparison(None, None, None)}
+            notes.append("EBITDA not shown: the rows it is derived from didn't reconcile.")
     core = [metrics[k]["current"] for k in ("revenue", "pbt", "pat")]
     status = "ok" if None not in core else "partial"
     return ResultsExtraction(status, basis, unit_src, periods, metrics, evidence, notes)
+
+
+def sanity_problems(m: dict, rows: dict, bank: bool) -> list[str]:
+    """Cheap accounting identities that catch misread columns, OCR damage and wrong rows."""
+    out = []
+    rev = [m["revenue"][k] for k in ("current", "prev_quarter", "year_ago")]
+    if any(v is not None and v <= 0 for v in rev):
+        out.append("revenue not positive")
+    vals = [v for v in rev if v]
+    if len(vals) >= 2 and max(vals) / min(vals) > 2.5:
+        out.append("revenue columns differ by more than 2.5x")
+    for k in ("current", "prev_quarter", "year_ago"):
+        r, pbt, pat = m["revenue"][k], m["pbt"][k], m["pat"][k]
+        if r and pbt is not None and abs(pbt) > 1.05 * r and not bank:
+            out.append(f"PBT larger than revenue ({k})")
+            break
+        if pbt is not None and pat is not None and abs(pat) > abs(pbt) * 1.6 + 0.05 * (r or 0):
+            out.append(f"PAT inconsistent with PBT ({k})")
+            break
+    pre, exc, pbt = rows.get("pbt_pre_exc"), rows.get("exceptional"), rows.get("pbt")
+    if pre and pbt and exc and len(exc.values) >= 1:
+        a, b, x = pre.values[0], pbt.values[0], exc.values[0]
+        if min(abs(a + x - b), abs(a - x - b)) > max(1.0, 0.01 * abs(b)):
+            out.append("PBT doesn't equal pre-exceptional PBT plus exceptional items")
+    elif pre and pbt and not exc and abs(pre.values[0] - pbt.values[0]) > max(1.0, 0.01 * abs(pbt.values[0])):
+        out.append("PBT differs from pre-exceptional PBT with no exceptional row")
+    return out

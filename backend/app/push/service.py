@@ -160,7 +160,7 @@ def filing_detail(uid: str) -> dict | None:
     item = storage.cache_get(f"ann:{uid}") or storage.cache_get_stale(f"ann:{uid}")
     if not item:
         return None
-    cached = storage.cache_get(f"anndetail:{uid}")
+    cached = storage.cache_get(f"anndetail:v2:{uid}")
     if cached:
         return cached
     detail = {"item": item, "document": None, "results": None, "people": None, "key_lines": [], "llm_summary": None, "notes": []}
@@ -201,7 +201,7 @@ def filing_detail(uid: str) -> dict | None:
                                      "unsupported_numbers": sorted(unsupported)}
         except Exception as e:  # noqa: BLE001 - LLMError or anything unexpected
             detail["notes"].append(f"AI summary unavailable: {e if isinstance(e, llm.LLMError) else type(e).__name__}")
-    storage.cache_set(f"anndetail:{uid}", detail, 7 * 86400)
+    storage.cache_set(f"anndetail:v2:{uid}", detail, 7 * 86400)
     return detail
 
 

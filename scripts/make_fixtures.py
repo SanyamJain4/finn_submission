@@ -181,6 +181,13 @@ def eod() -> dict:
                 vol *= 2.2
             bars.append({"date": day.isoformat(), "close": round(price, 2), "volume": round(max(vol, 0))})
         out[s] = bars
+    rnd = random.Random(11)
+    for key, level in (("IDX:NIFTY50", 24800.0), ("IDX:SENSEX", 81300.0), ("IDX:BANKNIFTY", 54200.0), ("IDX:NIFTYIT", 36900.0)):
+        bars, v = [], level
+        for day in days:
+            v *= 1 + rnd.gauss(0.0003, 0.007)
+            bars.append({"date": day.isoformat(), "close": round(v, 2), "volume": None})
+        out[key] = bars
     return out
 
 

@@ -50,9 +50,65 @@ class LLMUnavailable(LLMError):
     pass
 
 
+_GEM_RE = re.compile(r"^gemini-(\d+(?:\.\d+)?)-(flash-lite|flash|pro)(-.+)?$")
+_BAD_SUFFIX = re.compile(r"live|tts|audio|image|embed|thinking|exp|native|computer")
+
+
+def pick_gemini(available: list[str]) -> tuple[str | None, str | None]:
+    """Newest stable Flash-Lite for extraction, newest stable Flash for synthesis (previews only as a last resort)."""
+    def best(family: str) -> str | None:
+        cands = []
+        for m in available:
+            g = _GEM_RE.match(m)
+            if not g or g.group(2) != family or _BAD_SUFFIX.search(g.group(3) or ""):
+                continue
+            suffix = g.group(3) or ""
+            cands.append((0 if "preview" in suffix else 1, float(g.group(1)), -len(suffix), m))
+        return max(cands)[3] if cands else None
+    fast = best("flash-lite") or best("flash")
+    smart = best("flash") or best("pro") or fast
+    return fast, smart
+
+
+def gemini_chain(tier: str, available: list[str]) -> list[str]:
+    """Ordered fallbacks. Google's '-latest' aliases first (kept working as versions retire), then the newest
+    stable versioned model, then older stable versions, then the other tier's alias."""
+    fast, smart = pick_gemini(available)
+    order = (["gemini-flash-lite-latest", fast, "gemini-2.5-flash-lite", "gemini-flash-latest", smart] if tier == "fast"
+             else ["gemini-flash-latest", smart, "gemini-2.5-flash", "gemini-pro-latest", "gemini-flash-lite-latest", fast])
+    out = []
+    for m in order:
+        if m and m not in out and (not available or m in available):
+            out.append(m)
+    return out or ([DEFAULT_MODELS["gemini"][0 if tier == "fast" else 1]])
+
+
+def _chain(tier: str) -> list[str]:
+    override = settings.llm_smart_model if tier == "smart" else settings.llm_fast_model
+    if override:
+        return [override]
+    if settings.llm_provider != "gemini" or not settings.llm_api_key:
+        fast_d, smart_d = DEFAULT_MODELS.get(settings.llm_provider, ("", ""))
+        return [smart_d if tier == "smart" else fast_d]
+    avail = storage.cache_get("llm:gemini_available")
+    if avail is None:
+        try:
+            avail = list_models()
+            storage.cache_set("llm:gemini_available", avail, 86400)
+        except Exception as e:  # noqa: BLE001 - discovery is best effort
+            log.warning("gemini model discovery failed: %s", e)
+            avail = []
+            storage.cache_set("llm:gemini_available", avail, 600)
+    chain = gemini_chain(tier, avail)
+    working = storage.cache_get(f"llm:gemini_working:{tier}")
+    if working in chain:
+        chain.remove(working)
+        chain.insert(0, working)
+    return chain
+
+
 def models() -> tuple[str, str]:
-    fast_d, smart_d = DEFAULT_MODELS.get(settings.llm_provider, ("", ""))
-    return settings.llm_fast_model or fast_d, settings.llm_smart_model or smart_d
+    return _chain("fast")[0], _chain("smart")[0]
 
 
 def status() -> dict:
@@ -79,20 +135,20 @@ def _call_provider(model: str, system: str, prompt: str, max_tokens: int) -> tup
     with httpx.Client(timeout=settings.llm_timeout_s) as c:
         if p == "gemini":
             base = settings.llm_base_url or "https://generativelanguage.googleapis.com/v1beta"
-            gen = {"temperature": 0, "maxOutputTokens": max_tokens, "responseMimeType": "application/json"}
-            if "flash" in model and "2.0" not in model:
-                # 2.5+ Flash models "think" by default and that spends the output budget; extraction doesn't need it.
-                gen["thinkingConfig"] = {"thinkingBudget": 0}
-            r = c.post(f"{base}/models/{model}:generateContent", headers={"x-goog-api-key": key}, json={
-                "systemInstruction": {"parts": [{"text": system}]},
-                "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-                "generationConfig": gen,
-            })
-            if r.status_code == 400 and "thinking" in r.text.lower() and "thinkingConfig" in gen:
-                gen.pop("thinkingConfig")  # model doesn't accept the knob
-                r = c.post(f"{base}/models/{model}:generateContent", headers={"x-goog-api-key": key}, json={
-                    "systemInstruction": {"parts": [{"text": system}]},
-                    "contents": [{"role": "user", "parts": [{"text": prompt}]}], "generationConfig": gen})
+            # Only options every current model accepts. 2.5 models get temperature 0 and thinking off; newer and
+            # '-latest' models may think by default, so they get a larger output budget instead of knobs they reject.
+            gen = {"maxOutputTokens": max_tokens, "responseMimeType": "application/json"}
+            if model.startswith("gemini-2.5"):
+                gen["temperature"] = 0
+                if "flash" in model:
+                    gen["thinkingConfig"] = {"thinkingBudget": 0}
+            else:
+                gen["maxOutputTokens"] = max_tokens * 2 + 2048
+            body = {"systemInstruction": {"parts": [{"text": system}]}, "contents": [{"role": "user", "parts": [{"text": prompt}]}], "generationConfig": gen}
+            r = c.post(f"{base}/models/{model}:generateContent", headers={"x-goog-api-key": key}, json=body)
+            if r.status_code == 400 and len(gen) > 2:  # retry once with the bare minimum
+                body["generationConfig"] = {"maxOutputTokens": gen["maxOutputTokens"], "responseMimeType": "application/json"}
+                r = c.post(f"{base}/models/{model}:generateContent", headers={"x-goog-api-key": key}, json=body)
             r.raise_for_status()
             d = r.json()
             u = d.get("usageMetadata", {})
@@ -131,56 +187,73 @@ def _call_provider(model: str, system: str, prompt: str, max_tokens: int) -> tup
     raise LLMUnavailable(f"unknown provider {p}")
 
 
+def _provider_message(e: httpx.HTTPStatusError) -> str:
+    try:
+        return str(e.response.json().get("error", {}).get("message", ""))[:180]
+    except ValueError:
+        return e.response.text[:120]
+
+
 def complete_json(schema: type[T], prompt: str, *, tier: str = "fast", purpose: str = "", max_tokens: int = 2048,
                   cache_ttl_s: float = 30 * 86400) -> T:
     if not settings.llm_enabled:
         raise LLMUnavailable("No LLM provider configured (set FINN_LLM_PROVIDER and FINN_LLM_API_KEY)")
-    fast, smart = models()
-    model = smart if tier == "smart" else fast
-    if not model:
+    chain = _chain(tier)
+    if not chain or not chain[0]:
         raise LLMUnavailable(f"No model configured for tier '{tier}'")
     system = SYSTEM_GUARD + "\nJSON schema:\n" + json.dumps(schema.model_json_schema())
-    key = "llm:" + storage.sha256(model + "\x00" + system + "\x00" + prompt)
+    # cache key is model-independent: the same prompt answered by a fallback model is still a valid answer
+    key = "llm:" + storage.sha256(tier + "\x00" + system + "\x00" + prompt)
     cached = storage.cache_get(key)
     if cached is not None:
-        storage.log_llm_call(purpose, model, True, 0, 0, True)
+        storage.log_llm_call(purpose, chain[0], True, 0, 0, True)
         return schema.model_validate(cached)
 
-    last_err = ""
-    user_prompt = prompt
-    for attempt in range(3):
-        try:
-            text, tin, tout = _call_provider(model, system, user_prompt, max_tokens)
-        except LLMError as e:
-            storage.log_llm_call(purpose, model, False, None, None, False, str(e))
-            if attempt < 2:
+    failures: list[str] = []
+    for model in chain[:4]:
+        user_prompt, last_err = prompt, ""
+        for attempt in range(3):
+            try:
+                text, tin, tout = _call_provider(model, system, user_prompt, max_tokens)
+            except LLMError as e:
+                storage.log_llm_call(purpose, model, False, None, None, False, str(e))
+                last_err = str(e)
+                if attempt < 1:
+                    continue
+                break
+            except httpx.HTTPStatusError as e:
+                code = e.response.status_code
+                msg = _provider_message(e)
+                storage.log_llm_call(purpose, model, False, None, None, False, f"HTTP {code} {msg}"[:300])
+                if code in (401, 403):
+                    raise LLMError(f"Gemini rejected the API key (HTTP {code}): {msg}") from e
+                if code == 429 and attempt < 2:
+                    time.sleep(6 * (attempt + 1))  # free tiers rate-limit per minute
+                    continue
+                if code in (500, 502, 503, 504) and attempt < 1:
+                    time.sleep(3)
+                    continue
+                last_err = f"HTTP {code} {msg}".strip()
+                break  # 400/404/persistent overload: try the next model
+            except (httpx.TimeoutException, httpx.TransportError) as e:
+                storage.log_llm_call(purpose, model, False, None, None, False, type(e).__name__)
+                last_err = f"network: {type(e).__name__}"
+                break
+            try:
+                obj = schema.model_validate(_extract_json(text))
+            except (json.JSONDecodeError, ValidationError) as e:
+                last_err = "invalid JSON: " + str(e)[:300]
+                storage.log_llm_call(purpose, model, False, tin, tout, False, "invalid JSON")
+                user_prompt = prompt + f"\n\nYour previous reply was invalid ({last_err}). Return ONLY valid JSON for the schema."
                 continue
-            raise
-        except httpx.HTTPStatusError as e:
-            code = e.response.status_code
-            storage.log_llm_call(purpose, model, False, None, None, False, f"HTTP {code}")
-            if code in (429, 500, 502, 503, 504) and attempt < 2:
-                time.sleep(4 * (attempt + 1))  # free tiers rate-limit per minute
-                continue
-            hint = {400: "bad request (check model name)", 401: "invalid API key", 403: "API key not permitted",
-                    404: f"model '{model}' not found - set FINN_LLM_FAST_MODEL/FINN_LLM_SMART_MODEL", 429: "rate limited"}.get(code, "")
-            raise LLMError(f"provider HTTP {code} {hint}".strip()) from e
-        except (httpx.TimeoutException, httpx.TransportError) as e:
-            storage.log_llm_call(purpose, model, False, None, None, False, type(e).__name__)
-            if attempt < 2:
-                continue
-            raise LLMError(f"provider network error: {type(e).__name__}") from e
-        try:
-            obj = schema.model_validate(_extract_json(text))
-        except (json.JSONDecodeError, ValidationError) as e:
-            last_err = str(e)[:500]
-            storage.log_llm_call(purpose, model, False, tin, tout, False, "invalid JSON")
-            user_prompt = prompt + f"\n\nYour previous reply was invalid ({last_err}). Return ONLY valid JSON for the schema."
-            continue
-        storage.log_llm_call(purpose, model, False, tin, tout, True)
-        storage.cache_set(key, obj.model_dump(), cache_ttl_s)
-        return obj
-    raise LLMError(f"model returned invalid structured output: {last_err}")
+            storage.log_llm_call(purpose, model, False, tin, tout, True)
+            storage.cache_set(key, obj.model_dump(), cache_ttl_s)
+            if settings.llm_provider == "gemini":
+                storage.cache_set(f"llm:gemini_working:{tier}", model, 86400)
+            return obj
+        failures.append(f"{model}: {last_err}")
+        log.warning("model %s failed for %s (%s); trying next", model, purpose, last_err)
+    raise LLMError("all models failed - " + " | ".join(failures))
 
 
 def doc_block(passages: list[tuple[str, str]]) -> str:

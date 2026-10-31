@@ -36,3 +36,19 @@ export const CATEGORY_LABEL: Record<string, string> = {
   agm_egm: 'AGM / EGM', pledging: 'Pledging', unclassified: 'Routine filing',
 }
 export const catLabel = (c: string) => CATEGORY_LABEL[c] ?? c
+
+const inr0 = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 })
+const inr2 = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 })
+/** ₹1,45,796 (Indian grouping). */
+export const rupees = (v: number | null | undefined, decimals = false) => (v == null ? '—' : `${v < 0 ? '−' : ''}₹${(decimals ? inr2 : inr0).format(Math.abs(v))}`)
+export const signedRupees = (v: number | null | undefined) => (v == null ? '—' : `${v > 0 ? '+' : v < 0 ? '−' : ''}₹${inr0.format(Math.abs(v))}`)
+/** ₹1.46 L / ₹2.31 Cr for headline figures. */
+export function compactRupees(v: number | null | undefined) {
+  if (v == null) return '—'
+  const a = Math.abs(v), s = v < 0 ? '−' : ''
+  if (a >= 1e7) return `${s}₹${(a / 1e7).toFixed(2)} Cr`
+  if (a >= 1e5) return `${s}₹${(a / 1e5).toFixed(2)} L`
+  return `${s}₹${inr0.format(a)}`
+}
+export const level = (v: number | null | undefined) => (v == null ? '—' : v.toLocaleString('en-IN', { maximumFractionDigits: 2, minimumFractionDigits: 2 }))
+export const shortDate = (iso: string | null | undefined) => (iso ? new Date(iso + (iso.length === 10 ? 'T00:00:00' : '')).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—')

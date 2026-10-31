@@ -66,8 +66,10 @@ def main() -> None:
     (OUT / "announcements.json").write_text(json.dumps([i.to_dict() for i in items], indent=0), encoding="utf-8")
 
     print("[2/4] End-of-day prices")
-    eod = market.get_eod(sorted(syms))
+    idx_keys = [f"IDX:{k}" for k, _, _ in market.INDICES]
+    eod = market.get_eod(sorted(syms) + idx_keys)
     good = {s: b for s, b in eod["series"].items() if b and eod["status"][s].startswith("ok")}
+    print(f"      indices: {', '.join(k[4:] for k in idx_keys if k in good) or 'none'}")
     print(f"      {len(good)}/{len(syms)} symbols via {eod['provider']}")
     if good:
         used.append("Yahoo Finance")

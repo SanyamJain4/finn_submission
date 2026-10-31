@@ -100,7 +100,7 @@ def _documents(soup: BeautifulSoup) -> dict:
     if ar:
         for a in ar.select("a[href]"):
             text = a.get_text(" ", strip=True)
-            m = re.search(r"(?:Financial Year|FY)\s*(\d{4})", text)
+            m = re.search(r"(?:Financial Year|FY|Annual Report)\s*(\d{4})", text) or re.search(r"\b((?:19|20)\d{2})\b", text)
             docs["annual_reports"].append({"title": text, "year": int(m.group(1)) if m else None, "url": urljoin(BASE, a["href"])})
     cc = soup.select_one(".documents.concalls") or soup.select_one("div.concalls")
     if cc:
@@ -192,16 +192,18 @@ def company(symbol: str) -> dict:
 
 def _capex(c, data: dict) -> dict | None:
     """Fixed-asset purchases from the cash-flow schedule (needed for FCF). Optional; absent -> FCF not computed."""
-    cid = data.get("warehouse_id") or data.get("company_id")
-    if not cid:
-        return None
-    try:
-        r = fetch(c, f"{BASE}/api/company/{cid}/schedules/", "Screener", retries=1, params={
-            "parent": "Cash from Investing Activity", "section": "cash-flow",
-            "consolidated": "true" if data.get("basis") == "consolidated" else ""})
-        sched = r.json()
-    except (SourceError, ValueError) as e:
-        log.info("capex schedule unavailable for %s: %s", data["symbol"], e)
+    sched = None
+    for cid in [i for i in (data.get("company_id"), data.get("warehouse_id")) if i]:
+        try:
+            r = fetch(c, f"{BASE}/api/company/{cid}/schedules/", "Screener", retries=0, params={
+                "parent": "Cash from Investing Activity", "section": "cash-flow",
+                "consolidated": "true" if data.get("basis") == "consolidated" else ""})
+            sched = r.json()
+            if isinstance(sched, dict) and sched:
+                break
+        except (SourceError, ValueError) as e:
+            log.info("capex schedule unavailable for %s via id %s: %s", data["symbol"], cid, e)
+    if not isinstance(sched, dict):
         return None
     for label, series in sched.items():
         if re.search(r"fixed assets purchased|purchase of (fixed|property)", label, re.I) and isinstance(series, dict):

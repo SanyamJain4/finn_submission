@@ -5,7 +5,17 @@ A mobile-first intelligence layer for a public-markets investor. FINN answers tw
 * **Push: "What changed, and should I care?"** Every exchange filing across an 18-stock portfolio is classified, ranked by materiality (with the reasons shown), and folded away if it's routine. Results filings get a first cut of Revenue / EBITDA / PBT / PAT, QoQ and YoY, read from the actual PDF. Management changes show the incoming person's profile, taken from the filing itself. End-of-day price and volume moves fire alerts at thresholds you set.
 * **Pull: "Tell me about this company."** For any NSE ticker, FINN reads the standardised statements, the latest annual report and the last four earnings-call transcripts. It then reports on trajectory, balance sheet, cash quality, **what management promised vs what it delivered**, and a bull/bear case. Every claim carries a tappable citation to a page or a computed figure.
 
-The opening screen is one sentence, not a dashboard: *"4 filings need you. 6 worth a glance. 7 routine, folded away."*
+Five sections:
+
+| Section | Answers | What's there |
+|---|---|---|
+| **Today** | What's happening in the market and my investments? | NIFTY 50 / SENSEX / BANK NIFTY / NIFTY IT (with close date and source), portfolio snapshot, a daily briefing whose every line is checked against its source, then watchlist filings triaged into *needs you / worth a glance / routine* |
+| **Alerts** | What specifically needs my decision? | Only items that matched your rules (price ±X%, volume ≥N×, filing types and rank), grouped by type, with read / acknowledged states and the rule that fired |
+| **Research** | Tell me about this company | Primary-source report: KPIs, revenue/margin and cash charts, a promised-vs-delivered scorecard, balance sheet, bull/bear, cited evidence |
+| **Copilot** | Ask anything about my holdings, filings, companies | Answers only from FINN's data (prices, filings and parsed results, research reports, your holdings); every claim cited, unsupported numbers flagged; reachable from any filing, alert, holding or report |
+| **My portfolio** | What do I own and how is it doing? | Holdings (qty, avg price) → value, day change, unrealised P&L, sector and market-cap allocation, best/worst. Separate from the **watchlist** FINN monitors |
+
+Holdings, alert states, profile and chat history live in the visitor's browser; the server only values them, so a shared demo link never mixes two people's data.
 
 ## Run it
 
@@ -30,6 +40,10 @@ Development with hot reload: run `uvicorn app.main:app --reload` in `backend/` a
 
 **Offline mode.** `FINN_FIXTURE_MODE=1` serves synthetic fixtures in the exact shapes of NSE/Yahoo/Screener responses and SEBI-format PDFs (regenerate them with `python scripts/make_fixtures.py`). The UI shows a permanent "Synthetic fixture data" banner. Never enable it in production.
 
+## API
+
+`GET /api/feed` · `GET /api/announcements/{uid}` · `GET /api/alerts` · `GET|PUT /api/prefs/alerts` · `GET /api/indices` · `POST /api/holdings/value` · `GET /api/holdings/example` · `POST /api/briefing` · `POST /api/copilot` · `POST /api/research` + `GET /api/research/jobs/{id}` · `GET /api/search` · `GET /api/diagnostics` · `GET /api/status`
+
 ## Configuration
 
 All settings are environment variables; see [.env.example](.env.example). Nothing secret is committed.
@@ -38,7 +52,7 @@ All settings are environment variables; see [.env.example](.env.example). Nothin
 |---|---|
 | `FINN_LLM_PROVIDER` | `gemini` (free tier, recommended), `anthropic`, `openai` (any OpenAI-compatible API: Groq, OpenRouter…), or `none` |
 | `FINN_LLM_API_KEY` | Provider key. Without one, FINN still classifies, ranks, extracts results, computes every number and alert, and says which narrative sections need a model |
-| `FINN_LLM_FAST_MODEL` / `FINN_LLM_SMART_MODEL` | Override model routing (defaults per provider in `backend/app/llm.py`) |
+| `FINN_LLM_FAST_MODEL` / `FINN_LLM_SMART_MODEL` | Override model routing. For Gemini, leave empty: FINN discovers the newest stable Flash-Lite (extraction, briefing) and Flash (research synthesis, Copilot) available to your key |
 | `FINN_LLM_BASE_URL` | Required for `openai`-type providers |
 | `FINN_LLM_MAX_CALLS_PER_RESEARCH` | Hard cap on model calls per report (default 8; typical use is 6) |
 | `FINN_DATA_DIR` | SQLite cache location |
@@ -67,9 +81,9 @@ This captures the last 7 days of filings, EOD prices, the parsed details of the 
 ## Tests
 
 ```bash
-cd backend && python -m pytest -q                 # 72 unit/API tests, no network
+cd backend && python -m pytest -q                 # unit/API tests, no network
 FINN_FIXTURE_MODE=1 uvicorn app.main:app &        # then:
-node scripts/e2e_mobile.cjs                       # 17 mobile UI checks at 390x844 (Playwright)
+node scripts/e2e_mobile.cjs                       # 28 mobile UI checks at 390x844 (Playwright)
 cd backend && python ../scripts/smoke_live.py TRENT   # LIVE: real NSE/BSE/Yahoo/Screener + your LLM key
 ```
 

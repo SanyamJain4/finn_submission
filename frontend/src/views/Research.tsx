@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, type GuidanceRow, type Job, type Report } from '../api'
 import { cr, metricValue, pct, plainPct, sign } from '../format'
-import { ClaimLine, ErrorNote, Sheet, SnapshotNote, jump } from '../ui'
+import { askCopilot } from '../store'
+import { BarLine, ClaimLine, ErrorNote, Sheet, SnapshotNote, jump } from '../ui'
 
 const STAGE_LABEL: Record<string, string> = {
   resolve: 'Finding the company', financials: 'Reading reported financials', documents: 'Fetching annual report and call transcripts',
@@ -105,6 +106,7 @@ function ReportView({ r, rerun }: { r: Report; rerun: () => void }) {
         <h2 className="h1">{r.name}</h2>
         {s.headline && <p className="headline">{s.headline}</p>}
         <SnapshotNote s={r.snapshot} />
+        <button className="btn-ghost" onClick={() => askCopilot({ symbol: r.symbol, label: r.name }, `What are the most important things to know about ${r.name} from this research?`)}>Ask Copilot about {r.symbol}</button>
       </header>
 
       <nav className="section-nav" aria-label="Report sections">
@@ -144,7 +146,7 @@ function ReportView({ r, rerun }: { r: Report; rerun: () => void }) {
         )}
         <dl className="kpis">
           {keyMetrics.map(k => (
-            <div key={k}><dt>{M[k].label}</dt><dd>{metricValue(M[k].value, M[k].unit)}</dd></div>
+            <div key={k} className="kpi"><dt>{M[k].label}</dt><dd className={M[k].unit === '%' && /growth|CAGR|YoY/.test(M[k].label) ? sign(M[k].value) : ''}>{metricValue(M[k].value, M[k].unit)}</dd><span className="muted small">{M[k].period}</span></div>
           ))}
         </dl>
       </section>
@@ -154,9 +156,7 @@ function ReportView({ r, rerun }: { r: Report; rerun: () => void }) {
         <p className="muted small">{g.method}</p>
         {g.rows.length > 0 && (
           <>
-            <p className="tally">
-              {(['missed', 'met', 'exceeded', 'pending'] as const).filter(k => g.tally[k]).map(k => <span key={k} className={`v-${k}`}>{g.tally[k]} {VERDICT[k].toLowerCase()}</span>)}
-            </p>
+            <Scorecard tally={g.tally} />
             <ul className="promises">{g.rows.map((row, k) => <Promise key={k} row={row} r={r} onCite={setCite} />)}</ul>
           </>
         )}
@@ -173,8 +173,18 @@ function ReportView({ r, rerun }: { r: Report; rerun: () => void }) {
       <section id="r-trajectory" className="block">
         <h3 className="h2">Trajectory</h3>
         <ul className="claims">{s.trajectory.claims.map((c, k) => <ClaimLine key={k} c={c} report={r} onCite={setCite} />)}</ul>
-        <TrajectoryTable r={r} />
-        {r.tables.quarters.length > 0 && <QuarterTable r={r} />}
+        {r.tables.trajectory.length > 1 && (
+          <BarLine data={r.tables.trajectory.slice(-6) as unknown as Record<string, number | string | null>[]} barKey="revenue" lineKey="opm" barLabel="Revenue (₹ cr)" lineLabel={r.is_bank ? 'Financing margin' : 'Operating margin'}
+            fmtBar={v => cr(v)} fmtLine={v => plainPct(v)} />
+        )}
+        <details className="evidence"><summary>Year-by-year table</summary><TrajectoryTable r={r} /></details>
+        {r.tables.quarters.length > 0 && (
+          <>
+            <h4 className="h3 chart-h">Quarterly revenue growth, year on year</h4>
+            <BarLine data={r.tables.quarters.slice(-6) as unknown as Record<string, number | string | null>[]} barKey="revenue_yoy" lineKey="opm" barLabel="Revenue YoY" lineLabel="Margin" fmtBar={v => pct(v)} fmtLine={v => plainPct(v)} height={130} />
+            <QuarterTable r={r} />
+          </>
+        )}
       </section>
 
       <section id="r-balance" className="block">
@@ -198,6 +208,9 @@ function ReportView({ r, rerun }: { r: Report; rerun: () => void }) {
       <section id="r-cash" className="block">
         <h3 className="h2">Do profits turn into cash?</h3>
         <ul className="claims">{s.cash_quality.claims.map((c, k) => <ClaimLine key={k} c={c} report={r} onCite={setCite} />)}</ul>
+        {r.tables.cash.length > 1 && (
+          <BarLine data={r.tables.cash as unknown as Record<string, number | string | null>[]} barKey="cfo" lineKey="pat" barLabel="Operating cash (₹ cr)" lineLabel="PAT (₹ cr)" fmtBar={v => cr(v)} fmtLine={v => cr(v)} height={130} />
+        )}
         {r.tables.cash.length > 0 && (
           <div className="table-wrap"><table className="num-table wide">
             <thead><tr><th></th>{r.tables.cash.map(c => <th key={c.period}>{c.period}</th>)}</tr></thead>
@@ -247,6 +260,22 @@ function ReportView({ r, rerun }: { r: Report; rerun: () => void }) {
 
       {cite && <CiteSheet id={cite} r={r} onClose={() => setCite(null)} />}
     </article>
+  )
+}
+
+function Scorecard({ tally }: { tally: Record<string, number> }) {
+  const order = ['missed', 'met', 'exceeded', 'pending', 'cannot_evaluate', 'qualitative'] as const
+  const total = order.reduce((n, k) => n + (tally[k] || 0), 0)
+  const judged = (tally.met || 0) + (tally.exceeded || 0) + (tally.missed || 0)
+  return (
+    <div className="scorecard">
+      <p className="score-big">{judged ? <><b>{(tally.met || 0) + (tally.exceeded || 0)}</b> of {judged} measurable promises kept</> : 'No measurable promise could be checked yet'}</p>
+      <div className="score-bar" role="img" aria-label={order.filter(k => tally[k]).map(k => `${tally[k]} ${VERDICT[k]}`).join(', ')}>
+        {order.filter(k => tally[k]).map(k => <span key={k} className={`seg v-${k}`} style={{ flexGrow: tally[k] }} title={`${tally[k]} ${VERDICT[k]}`} />)}
+      </div>
+      <ul className="legend">{order.filter(k => tally[k]).map(k => <li key={k}><span className={`swatch v-${k}`} />{VERDICT[k]}<b>{tally[k]}</b></li>)}</ul>
+      <p className="muted small">{total} statements from the last four calls.</p>
+    </div>
   )
 }
 

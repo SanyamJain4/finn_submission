@@ -8,6 +8,7 @@ It prints a PASS/FAIL line per integration and exits non-zero if any core path f
 from __future__ import annotations
 
 import os
+import re
 import sys
 import time
 import traceback
@@ -94,10 +95,11 @@ def main(symbol: str) -> None:
             try:
                 r = llm.complete_json(Ping, tier=tier, purpose="smoke", cache_ttl_s=1, prompt=(
                     "From the document, return the company and its revenue growth.\n" + llm.doc_block([("E1", "Acme Ltd revenue grew 12.5% year on year.")])))
-                out.append(f"{tier}={llm.models()[0 if tier == 'fast' else 1]} ok ({r.company}, {r.revenue_growth_pct})")
+                from app import storage as _st
+                out.append(f"{tier}={_st.cache_get('llm:gemini_working:' + tier) or llm.models()[0 if tier == 'fast' else 1]} ok ({r.company}, {r.revenue_growth_pct})")
             except llm.LLMError as e:
-                avail = [m for m in llm.list_models() if "flash" in m or "pro" in m][:8]
-                raise RuntimeError(f"{tier} model failed: {e}. Available: {avail}") from e
+                avail = [m for m in llm.list_models() if re.search(r"flash|pro", m) and not re.search(r"tts|image|live|audio", m)]
+                raise RuntimeError(f"{tier}: {e}. Available: {avail}") from e
         return "; ".join(out)
     check("LLM structured output (fast + smart)", _llm)
 

@@ -10,7 +10,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
-from . import llm, portfolio, storage
+from . import briefing, copilot, llm, market, portfolio, storage
+from . import holdings as hd
 from .config import ROOT, settings
 from .http import SourceError
 from .push import service as push
@@ -97,6 +98,40 @@ def diagnostics():
     h._breaker.clear()
     return {"checked_at": end.isoformat(), "probes": out, "snapshot": snapshot.label(),
             "snapshot_reports": snapshot.report_symbols()}
+
+
+@app.get("/api/indices")
+def get_indices():
+    return market.indices()
+
+
+class HoldingsReq(BaseModel):
+    holdings: list[hd.Holding] = Field(default_factory=list, max_length=100)
+
+
+@app.post("/api/holdings/value")
+def holdings_value(r: HoldingsReq):
+    return hd.value(r.holdings)
+
+
+@app.get("/api/holdings/example")
+def holdings_example():
+    return {"holdings": hd.example(),
+            "note": "Example only: quantities are illustrative; cost = each stock's actual close about 60 sessions ago."}
+
+
+class BriefingReq(BaseModel):
+    holdings: list[str] = Field(default_factory=list, max_length=100)
+
+
+@app.post("/api/briefing")
+def get_briefing(r: BriefingReq):
+    return briefing.build([portfolio.normalise_ticker(s) for s in r.holdings if portfolio.normalise_ticker(s)])
+
+
+@app.post("/api/copilot")
+def ask_copilot(r: copilot.CopilotReq):
+    return copilot.answer(r)
 
 
 @app.get("/api/portfolio")
