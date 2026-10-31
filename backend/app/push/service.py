@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 
 from pydantic import BaseModel, Field
 
-from .. import llm, market, portfolio, storage
+from .. import llm, market, portfolio, snapshot, storage
 from ..config import settings
 from ..documents import get_document
 from . import people, results
@@ -84,6 +84,14 @@ def build_feed(hours: float = 24, start: datetime | None = None, end: datetime |
         raise ValueError("Window cannot exceed 31 days")
     prefs = alert_prefs()
     raw = get_announcements(start, end)
+    if raw.get("snapshot"):
+        # Live sources are blocked: anchor the window to the capture time so "last 24 hours" means the 24 hours
+        # before the snapshot, and say so in the UI.
+        cap = datetime.fromisoformat(raw["snapshot"]["captured_at"])
+        if end > cap:
+            span = end - start
+            end, start = cap, cap - span
+            raw = get_announcements(start, end)
     try:
         mkt = market_snapshot(prefs)
     except Exception as e:  # market data must never break the filings digest
@@ -120,6 +128,7 @@ def build_feed(hours: float = 24, start: datetime | None = None, end: datetime |
         "window": {"start": start.isoformat(), "end": end.isoformat()},
         "items": feed, "counts": {"tier": by_tier, "category": dict(by_cat), "total": len(feed)},
         "sources": raw["sources"], "market": mkt, "fixture": settings.fixture_mode,
+        "snapshot": raw.get("snapshot"),
     }
 
 
@@ -151,7 +160,7 @@ def filing_detail(uid: str) -> dict | None:
     item = storage.cache_get(f"ann:{uid}") or storage.cache_get_stale(f"ann:{uid}")
     if not item:
         return None
-    cached = storage.cache_get(f"anndetail:{uid}")
+    cached = storage.cache_get(f"anndetail:v2:{uid}")
     if cached:
         return cached
     detail = {"item": item, "document": None, "results": None, "people": None, "key_lines": [], "llm_summary": None, "notes": []}
@@ -160,6 +169,11 @@ def filing_detail(uid: str) -> dict | None:
         return detail
     doc = get_document(item["url"])
     detail["document"] = {"status": doc.status, "detail": doc.detail, "pages": len(doc.pages)}
+    snap = snapshot.details().get(uid)
+    if doc.status != "ok" and snap:
+        snap = {**snap, "item": item, "snapshot": snapshot.label()}
+        snap.setdefault("notes", []).append(f"Filing read when the snapshot was captured ({snapshot.label()['captured_at'][:16]}); this server can't download it live.")
+        return snap
     if doc.status != "ok":
         detail["notes"].append(f"Filing could not be read: {doc.detail}. The original link still works.")
         return detail
@@ -187,7 +201,7 @@ def filing_detail(uid: str) -> dict | None:
                                      "unsupported_numbers": sorted(unsupported)}
         except Exception as e:  # noqa: BLE001 - LLMError or anything unexpected
             detail["notes"].append(f"AI summary unavailable: {e if isinstance(e, llm.LLMError) else type(e).__name__}")
-    storage.cache_set(f"anndetail:{uid}", detail, 7 * 86400)
+    storage.cache_set(f"anndetail:v2:{uid}", detail, 7 * 86400)
     return detail
 
 

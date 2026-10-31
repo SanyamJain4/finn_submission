@@ -11,12 +11,13 @@ export interface MarketRow {
   status: string; as_of?: string; close?: number; day_change_pct?: number | null; signals: Signal[]
   volume_multiple?: number; volume_status?: string; spark: number[]; provider_status?: string; stale_note?: string
 }
+export interface SnapshotLabel { captured_at: string; sources: string[]; note: string }
 export interface SourceStatus { name: string; status: string; detail: string }
 export interface Feed {
   window: { start: string; end: string }; items: FeedItem[]
   counts: { tier: Record<Tier, number>; category: Record<string, number>; total: number }
   sources: SourceStatus[]; market: { provider: string | null; by_symbol: Record<string, MarketRow>; error?: string }
-  fixture: boolean
+  fixture: boolean; snapshot?: SnapshotLabel | null
 }
 export interface Comparison {
   label: string; current: number | null; prev_quarter: number | null; year_ago: number | null
@@ -38,7 +39,7 @@ export interface FilingDetail {
   item: FeedItem; document: { status: string; detail: string; pages: number } | null
   results: ResultsX | null; people: PeopleX | null; key_lines: { page: number; text: string }[]
   llm_summary: { summary: string; key_facts: string[]; grounded: boolean; unsupported_numbers: string[] } | null
-  notes: string[]
+  notes: string[]; snapshot?: SnapshotLabel | null
 }
 export interface AlertPrefs {
   categories: string[]; min_tier: Tier; price_move_pct: number; volume_multiple: number; volume_window: number
@@ -77,9 +78,29 @@ export interface Report {
   }
   verification: { llm_claims: number; verified: number; unverified: number; method: string }
   limitations: string[]; llm: { enabled: boolean; provider: string | null; calls_used: number; calls_budget: number }
-  fixture: boolean
+  fixture: boolean; snapshot?: SnapshotLabel | null
 }
 export interface Job { job_id: string | null; symbol: string; name?: string; status: 'running' | 'done' | 'error'; stage: string; stages_done: string[]; stages: string[]; error: string | null; report: Report | null; cached?: boolean }
+
+export interface IndexQuote { key: string; name: string; ticker: string; value: number | null; prev_close?: number | null; change: number | null; change_pct: number | null; as_of: string | null; kind: 'end_of_day' | 'delayed' | null; spark: number[]; status?: string }
+export interface HoldingInput { symbol: string; qty: number; avg_price: number; sector?: string | null; cap?: string | null }
+export interface HoldingRow extends HoldingInput {
+  name: string; sector: string; cap: string; price: number | null; prev_close: number | null; as_of: string | null; price_kind: string | null
+  price_status?: string; invested: number; value: number | null; pnl: number | null; pnl_pct: number | null; day_change: number | null; day_change_pct: number | null; weight: number | null; watched: boolean
+}
+export interface Valuation {
+  holdings: HoldingRow[]
+  totals: { invested: number; invested_priced: number; value: number | null; pnl: number | null; pnl_pct: number | null; day_change: number | null; day_change_pct: number | null; count: number; priced: number; unpriced: string[]; as_of: string | null }
+  allocation: { sector: { name: string; value: number; pct: number }[]; cap: { name: string; value: number; pct: number }[] }
+  best: string | null; worst: string | null; provider: string | null; note: string
+}
+export interface Briefing { headline: string; lines: { text: string; cites: string[]; verified: boolean }[]; origin: 'llm' | 'rules'; facts: { id: string; kind: string; text: string }[]; generated_at: string; provider: string | null; snapshot?: SnapshotLabel | null; model?: string; llm_error?: string }
+export interface CopilotSource { id: string; kind: string; title: string; text: string; url: string | null }
+export interface CopilotAnswer {
+  blocks: { text: string; cites: string[]; verified: boolean; issues?: string[] }[]; sources: CopilotSource[]; actions: { type: string; symbol: string }[]
+  origin: 'llm' | 'none' | 'error'; missing: string[]; follow_ups: string[]; note?: string; model?: string
+}
+export interface CopilotContext { symbol?: string | null; uid?: string | null; page?: string | null; label?: string }
 
 export class ApiError extends Error {
   status: number
@@ -116,5 +137,12 @@ export const api = {
   savePrefs: (p: AlertPrefs) => req<AlertPrefs>('/api/prefs/alerts', { method: 'PUT', body: JSON.stringify(p) }),
   search: (q: string) => req<{ results: { symbol: string; name: string; in_portfolio: boolean }[]; remote_error: string | null }>(`/api/search?q=${encodeURIComponent(q)}`),
   research: (query: string, force = false) => req<Job>('/api/research', { method: 'POST', body: JSON.stringify({ query, force }) }),
+  diagnostics: () => req<{ checked_at: string; probes: { name: string; ok: boolean; detail: string; ms: number }[]; snapshot: SnapshotLabel | null; snapshot_reports: string[] }>('/api/diagnostics'),
+  indices: () => req<{ indices: IndexQuote[]; provider: string | null }>('/api/indices'),
+  valueHoldings: (holdings: HoldingInput[]) => req<Valuation>('/api/holdings/value', { method: 'POST', body: JSON.stringify({ holdings }) }),
+  exampleHoldings: () => req<{ holdings: (HoldingInput & { bought: string })[]; note: string }>('/api/holdings/example'),
+  briefing: (holdings: string[]) => req<Briefing>('/api/briefing', { method: 'POST', body: JSON.stringify({ holdings }) }),
+  copilot: (body: { question: string; symbol?: string | null; uid?: string | null; page?: string | null; holdings: HoldingInput[]; history: { role: string; text: string }[] }) =>
+    req<CopilotAnswer>('/api/copilot', { method: 'POST', body: JSON.stringify(body) }),
   job: (id: string) => req<Job>(`/api/research/jobs/${id}`),
 }

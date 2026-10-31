@@ -26,6 +26,7 @@ from .http import SourceError, fetch, make_client
 log = logging.getLogger("finn.documents")
 FIXTURE_DOCS = Path(__file__).resolve().parent / "fixtures" / "docs"
 REUSE_S = 7 * 86400
+PARSER_VERSION = "2"  # bump when page-text extraction changes so cached parses are rebuilt
 
 
 @dataclass
@@ -52,6 +53,14 @@ def _rows_from_page(page: "fitz.Page") -> str:
     lines = []
     for r in rows:
         r.sort(key=lambda w: w[0])
+        # Some PDFs draw each word twice with a tiny offset ("fake bold"): drop a word identical to the previous one
+        # that overlaps it horizontally.
+        dedup = []
+        for w in r:
+            if dedup and w[4] == dedup[-1][4] and w[0] < dedup[-1][2] - 0.5:
+                continue
+            dedup.append(w)
+        r = dedup
         parts, prev_x1 = [], None
         for w in r:
             if prev_x1 is not None and w[0] - prev_x1 > 8:
@@ -70,7 +79,8 @@ def pdf_bytes_to_pages(data: bytes) -> list[str]:
 
 
 def get_document(url: str) -> Doc:
-    cached = storage.doc_get(url)
+    key = f"v{PARSER_VERSION}|{url}"
+    cached = storage.doc_get(key)
     if cached and cached["pages"] is not None and time.time() - cached["fetched"] < REUSE_S:
         return _wrap(url, cached["pages"], cached["sha256"])
     try:
@@ -88,7 +98,7 @@ def get_document(url: str) -> Doc:
         return Doc(url, "error", [], e.message)
     sha = storage.sha256(data)
     if cached and cached["sha256"] == sha and cached["pages"] is not None:
-        storage.doc_put(url, sha, ctype, len(data), cached["pages"])
+        storage.doc_put(key, sha, ctype, len(data), cached["pages"])
         return _wrap(url, cached["pages"], sha)
     if not data.startswith(b"%PDF"):
         if "html" in ctype or data[:200].lower().find(b"<html") >= 0:
@@ -99,7 +109,7 @@ def get_document(url: str) -> Doc:
     except Exception as e:  # malformed PDF
         log.warning("pdf parse failed %s: %s", url, e)
         return Doc(url, "error", [], "PDF could not be parsed")
-    storage.doc_put(url, sha, ctype, len(data), pages)
+    storage.doc_put(key, sha, ctype, len(data), pages)
     return _wrap(url, pages, sha)
 
 

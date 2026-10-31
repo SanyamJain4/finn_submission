@@ -13,7 +13,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from .. import portfolio, storage
+from .. import portfolio, snapshot, storage
 from ..config import settings
 from ..http import SourceError, fetch, make_client
 
@@ -90,12 +90,16 @@ def fetch_nse(start: datetime, end: datetime, symbols: set[str]) -> list[RawAnno
     key = f"nse:ann:{start:%Y%m%d}:{end:%Y%m%d%H}"
     rows = storage.cache_get(key)
     if rows is None:
-        with make_client() as c:
-            fetch(c, "https://www.nseindia.com/", "NSE")  # sets cookies
+        browser = {"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                   "Accept-Language": "en-IN,en;q=0.9", "Upgrade-Insecure-Requests": "1", "Sec-Fetch-Dest": "document",
+                   "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Site": "none"}
+        with make_client(headers=browser) as c:
+            fetch(c, "https://www.nseindia.com/", "NSE", retries=0)  # sets the Akamai cookies the API needs
             r = fetch(c, "https://www.nseindia.com/api/corporate-announcements", "NSE",
                       params={"index": "equities", "from_date": f"{start:%d-%m-%Y}", "to_date": f"{end:%d-%m-%Y}"},
                       headers={"Referer": "https://www.nseindia.com/companies-listing/corporate-filings-announcements",
-                               "Accept": "application/json"})
+                               "Accept": "application/json, text/plain, */*", "Sec-Fetch-Mode": "cors",
+                               "Sec-Fetch-Site": "same-origin", "Sec-Fetch-Dest": "empty"})
             try:
                 rows = r.json()
             except json.JSONDecodeError as e:
@@ -164,6 +168,12 @@ def get_announcements(start: datetime, end: datetime) -> dict:
     status = "ok" if not failures else ("partial" if ok else "error")
     detail = f"{len(items)} filings from {ok}/{len(companies)} companies"
     if failures:
-        detail += f"; failed: {', '.join(f.split(':')[0] for f in failures[:6])}"
+        reason = failures[0].split(":", 1)[1].strip()
+        detail += f"; failed ({reason}): {', '.join(f.split(':')[0] for f in failures[:6])}{'…' if len(failures) > 6 else ''}"
     sources.append({"name": "BSE", "status": status, "detail": detail})
+    if status == "error" and snapshot.available():
+        snap_items = [RawAnnouncement(**r) for r in snapshot.announcements()]
+        items = [i for i in snap_items if start <= datetime.fromisoformat(i.published) <= end]
+        sources.append({"name": "Snapshot", "status": "snapshot", "detail": snapshot.label()["note"]})
+        return {"items": items, "sources": sources, "snapshot": snapshot.label()}
     return {"items": items, "sources": sources}

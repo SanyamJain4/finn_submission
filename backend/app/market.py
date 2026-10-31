@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from . import portfolio, storage
+from . import portfolio, snapshot, storage
 from .config import settings
 from .http import SourceError, fetch, make_client
 
@@ -36,10 +36,25 @@ def _clean(bars: list[dict]) -> list[dict]:
     return out
 
 
+INDICES = [  # key, display name, Yahoo ticker
+    ("NIFTY50", "NIFTY 50", "^NSEI"),
+    ("SENSEX", "SENSEX", "^BSESN"),
+    ("BANKNIFTY", "BANK NIFTY", "^NSEBANK"),
+    ("NIFTYIT", "NIFTY IT", "^CNXIT"),
+]
+
+
+def ticker_for(key: str) -> str:
+    """Series key -> Yahoo ticker. Index keys are 'IDX:<KEY>'; everything else is an NSE symbol."""
+    if key.startswith("IDX:"):
+        return next(t for k, _, t in INDICES if k == key[4:])
+    return portfolio.yahoo_symbol(key)
+
+
 def _yfinance(symbols: list[str]) -> dict[str, list[dict]]:
     import yfinance as yf  # imported lazily: heavy
 
-    tickers = [portfolio.yahoo_symbol(s) for s in symbols]
+    tickers = [ticker_for(s) for s in symbols]
     df = yf.download(tickers=tickers, period="4mo", interval="1d", group_by="ticker", auto_adjust=False,
                      threads=False, progress=False)
     out = {}
@@ -55,7 +70,7 @@ def _yfinance(symbols: list[str]) -> dict[str, list[dict]]:
 
 def _chart_api(symbol: str) -> list[dict]:
     with make_client() as c:
-        r = fetch(c, f"https://query1.finance.yahoo.com/v8/finance/chart/{portfolio.yahoo_symbol(symbol)}", "Yahoo",
+        r = fetch(c, f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker_for(symbol)}", "Yahoo",
                   params={"range": "4mo", "interval": "1d"})
     res = r.json()["chart"]["result"][0]
     q = res["indicators"]["quote"][0]
@@ -82,6 +97,10 @@ def get_eod(symbols: list[str]) -> dict:
         for s in missing:  # recent total failure: don't hammer the provider on every feed refresh
             series[s] = storage.cache_get_stale(f"eod:{s}:last") or []
             status[s] = "error: provider unreachable (retrying in a few minutes)" + (" (showing last cached data)" if series[s] else "")
+            if not series[s] and snapshot.eod().get(s):
+                series[s], status[s] = snapshot.eod()[s], "snapshot"
+        if any(v == "snapshot" for v in status.values()):
+            provider = f"snapshot of Yahoo Finance, {snapshot.label()['captured_at'][:10]}"
         return {"series": series, "status": status, "provider": provider}
     if missing:
         try:  # yfinance has its own retry loop; bound it so a dead provider can't stall the feed
@@ -101,6 +120,9 @@ def get_eod(symbols: list[str]) -> dict:
                     series[s] = storage.cache_get_stale(f"eod:{s}:last") or []
                     if series[s]:
                         status[s] += " (showing last cached data)"
+                    elif snapshot.eod().get(s):
+                        series[s], status[s] = snapshot.eod()[s], "snapshot"
+                        provider = f"snapshot of Yahoo Finance, {snapshot.label()['captured_at'][:10]}"
                     continue
             series[s], status[s] = bars, "ok"
             got_any = True
@@ -145,6 +167,31 @@ def detect(bars: list[dict], rules: dict) -> dict:
         out["status"] = "stale"
         out["stale_note"] = f"Latest bar is {stale_days} days old"
     return out
+
+
+def latest(bars: list[dict]) -> dict:
+    """Last value, day change and what kind of data point it is (intraday-delayed vs end-of-day)."""
+    if not bars:
+        return {"value": None, "change": None, "change_pct": None, "as_of": None, "kind": None}
+    last = bars[-1]
+    prev = bars[-2]["close"] if len(bars) > 1 else None
+    now = datetime.utcnow() + timedelta(hours=5, minutes=30)
+    session_open = now.weekday() < 5 and (9 * 60 + 15) <= now.hour * 60 + now.minute < (15 * 60 + 30)
+    kind = "delayed" if last["date"] == now.date().isoformat() and session_open else "end_of_day"
+    return {"value": last["close"], "prev_close": prev, "as_of": last["date"], "kind": kind,
+            "change": None if prev is None else last["close"] - prev,
+            "change_pct": None if not prev else (last["close"] - prev) / prev * 100}
+
+
+def indices() -> dict:
+    keys = [f"IDX:{k}" for k, _, _ in INDICES]
+    eod = get_eod(keys)
+    out = []
+    for (k, name, t), key in zip(INDICES, keys):
+        bars = eod["series"].get(key) or []
+        out.append({"key": k, "name": name, "ticker": t, **latest(bars), "spark": sparkline(bars, 30),
+                    "status": eod["status"].get(key)})
+    return {"indices": out, "provider": eod["provider"]}
 
 
 def sparkline(bars: list[dict], n: int = 30) -> list[float]:

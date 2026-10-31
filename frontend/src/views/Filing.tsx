@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { api, type FeedItem, type FilingDetail, type ResultsX } from '../api'
 import { catLabel, cr, pct, plainPct, sign, stamp } from '../format'
-import { ErrorNote, Loading, Sheet } from '../ui'
+import { askCopilot } from '../store'
+import { ErrorNote, Loading, Sheet, SnapshotNote } from '../ui'
 
 export default function Filing({ item, onClose, research }: { item: FeedItem; onClose: () => void; research: (sym: string) => void }) {
   const [d, setD] = useState<FilingDetail | null>(null)
@@ -33,6 +34,7 @@ export default function Filing({ item, onClose, research }: { item: FeedItem; on
 
       {d && (
         <>
+          <SnapshotNote s={d.snapshot} />
           {d.results && <Results r={d.results} />}
           {d.people && <People p={d.people} />}
           {d.llm_summary && (
@@ -54,6 +56,7 @@ export default function Filing({ item, onClose, research }: { item: FeedItem; on
 
       <div className="sheet-actions">
         {item.url ? <a className="btn" href={item.url} target="_blank" rel="noreferrer noopener">Open original filing</a> : <span className="muted small">No attachment on the exchange.</span>}
+        <button className="btn-ghost" onClick={() => { onClose(); askCopilot({ symbol: item.symbol, uid: item.uid, label: `${item.symbol}: ${item.subject.slice(0, 40)}` }, 'What does this filing say, and what should I look at next?') }}>Ask Copilot</button>
         <button className="btn-ghost" onClick={() => research(item.symbol)}>Research {item.symbol}</button>
       </div>
     </Sheet>

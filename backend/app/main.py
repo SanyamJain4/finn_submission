@@ -10,7 +10,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
-from . import llm, portfolio, storage
+from . import briefing, copilot, llm, market, portfolio, storage
+from . import holdings as hd
 from .config import ROOT, settings
 from .http import SourceError
 from .push import service as push
@@ -45,6 +46,92 @@ def health():
 def status():
     return {"fixture_mode": settings.fixture_mode, "llm": llm.status(), "llm_usage": storage.llm_usage_summary(),
             "categories": CATEGORIES, "portfolio_size": len(portfolio.portfolio())}
+
+
+@app.get("/api/diagnostics")
+def diagnostics():
+    """Probe each live source from THIS server (bypassing caches and the circuit breaker) and report what happened."""
+    import time as _t
+    from datetime import datetime, timedelta
+
+    from . import http as h
+    from . import snapshot
+
+    h._breaker.clear()
+    end = datetime.now(IST)
+    probes = [
+        ("NSE announcements", "https://www.nseindia.com/", None, {}),
+        ("BSE announcements", "https://api.bseindia.com/BseIndiaAPI/api/AnnSubCategoryGetData/w",
+         {"pageno": 1, "strCat": -1, "strPrevDate": f"{end - timedelta(days=3):%Y%m%d}", "strScrip": "532540", "strSearch": "P",
+          "strToDate": f"{end:%Y%m%d}", "strType": "C", "subcategory": -1}, {"Referer": "https://www.bseindia.com/", "Origin": "https://www.bseindia.com"}),
+        ("Yahoo Finance prices", "https://query1.finance.yahoo.com/v8/finance/chart/RELIANCE.NS", {"range": "5d", "interval": "1d"}, {}),
+        ("Screener (research)", "https://www.screener.in/api/company/search/", {"q": "trent"}, {}),
+    ]
+    out = []
+    with h.make_client() as c:
+        for name, url, params, headers in probes:
+            t0 = _t.time()
+            try:
+                r = h.fetch(c, url, name, params=params, headers=headers, retries=0)
+                ok = True
+                detail = f"HTTP {r.status_code}, {len(r.content):,} bytes"
+                if "bseindia" in url:
+                    try:
+                        detail += f", {len(r.json().get('Table', []))} filings for TCS"
+                    except ValueError:
+                        ok, detail = False, "HTTP 200 but not JSON (blocked by bot protection)"
+            except h.SourceError as e:
+                ok, detail = False, e.message
+            out.append({"name": name, "ok": ok, "detail": detail, "ms": int((_t.time() - t0) * 1000)})
+    if settings.llm_enabled:
+        t0 = _t.time()
+        try:
+            ms = llm.list_models() if settings.llm_provider == "gemini" else []
+            fast, smart = llm.models()
+            missing = [m for m in (fast, smart) if ms and m not in ms]
+            out.append({"name": f"LLM ({settings.llm_provider})", "ok": not missing,
+                        "detail": f"key valid; {fast} / {smart}" + (f"; NOT AVAILABLE: {missing}" if missing else ""), "ms": int((_t.time() - t0) * 1000)})
+        except Exception as e:  # noqa: BLE001
+            out.append({"name": f"LLM ({settings.llm_provider})", "ok": False, "detail": str(e)[:200], "ms": int((_t.time() - t0) * 1000)})
+    else:
+        out.append({"name": "LLM", "ok": False, "detail": "not configured (set FINN_LLM_API_KEY)", "ms": 0})
+    h._breaker.clear()
+    return {"checked_at": end.isoformat(), "probes": out, "snapshot": snapshot.label(),
+            "snapshot_reports": snapshot.report_symbols()}
+
+
+@app.get("/api/indices")
+def get_indices():
+    return market.indices()
+
+
+class HoldingsReq(BaseModel):
+    holdings: list[hd.Holding] = Field(default_factory=list, max_length=100)
+
+
+@app.post("/api/holdings/value")
+def holdings_value(r: HoldingsReq):
+    return hd.value(r.holdings)
+
+
+@app.get("/api/holdings/example")
+def holdings_example():
+    return {"holdings": hd.example(),
+            "note": "Example only: quantities are illustrative; cost = each stock's actual close about 60 sessions ago."}
+
+
+class BriefingReq(BaseModel):
+    holdings: list[str] = Field(default_factory=list, max_length=100)
+
+
+@app.post("/api/briefing")
+def get_briefing(r: BriefingReq):
+    return briefing.build([portfolio.normalise_ticker(s) for s in r.holdings if portfolio.normalise_ticker(s)])
+
+
+@app.post("/api/copilot")
+def ask_copilot(r: copilot.CopilotReq):
+    return copilot.answer(r)
 
 
 @app.get("/api/portfolio")

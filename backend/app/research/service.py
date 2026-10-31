@@ -20,7 +20,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from .. import llm, portfolio, storage
+from .. import llm, portfolio, snapshot, storage
 from ..config import settings
 from ..documents import BM25, chunk_pages, get_document
 from ..http import SourceError
@@ -72,7 +72,7 @@ class Synthesis(BaseModel):
 def start(query: str, force: bool = False) -> dict:
     sym = resolve(query)
     if not force:
-        cached = storage.cache_get(f"report:{sym['symbol']}")
+        cached = storage.cache_get(f"report:v2:{sym['symbol']}")
         if cached:
             return {"job_id": None, "status": "done", "report": cached, "cached": True}
     with _jobs_lock:
@@ -105,7 +105,12 @@ def resolve(query: str) -> dict:
     if sym and (portfolio.by_symbol(sym) or " " not in q):
         co = portfolio.by_symbol(sym)
         return {"symbol": sym, "name": co["name"] if co else None}
-    hits = screener.search(q)
+    try:
+        hits = screener.search(q)
+    except SourceError:
+        hits = [{"symbol": s_, "name": s_} for s_ in snapshot.report_symbols() if q.upper() in s_]
+        if not hits:
+            raise
     if not hits:
         raise ValueError(f"No listed company found for '{q}'")
     return {"symbol": hits[0]["symbol"], "name": hits[0]["name"]}
@@ -123,8 +128,19 @@ def _run(job: dict) -> None:
         job["report"] = rep
         job["status"] = "done"
         _stage(job, "")
-        storage.cache_set(f"report:{job['symbol']}", rep, 24 * 3600)
-    except (SourceError, ValueError) as e:
+        storage.cache_set(f"report:v2:{job['symbol']}", rep, 24 * 3600)
+    except SourceError as e:
+        snap = snapshot.report(job["symbol"])
+        if snap:
+            lab = snapshot.label()
+            snap = {**snap, "snapshot": lab,
+                    "limitations": [f"Live Screener/filings unreachable from this server ({e.message}); showing the report generated at {lab['captured_at'][:16].replace('T', ' ')} IST from the same primary sources."] + snap.get("limitations", [])}
+            job["report"], job["status"] = snap, "done"
+            _stage(job, "")
+        else:
+            hint = f" Reports available offline: {', '.join(snapshot.report_symbols())}." if snapshot.report_symbols() else ""
+            job["status"], job["error"] = "error", f"{e}.{hint}"
+    except ValueError as e:
         job["status"], job["error"] = "error", str(e)
     except Exception as e:  # noqa: BLE001 - report any crash to the UI rather than hanging
         log.error("research crashed: %s\n%s", e, traceback.format_exc())

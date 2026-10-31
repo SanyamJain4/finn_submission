@@ -196,3 +196,95 @@ def test_research_with_mocked_llm(monkeypatch):
     assert bull[0]["verified"] and not bear[0]["verified"]                       # '50%' not in cited metric
     assert rep["verification"]["unverified"] >= 1
     assert calls.count("synthesis") == 1 and len(calls) <= rep["llm"]["calls_budget"]
+
+
+# ---------------- regressions from real Oct-2026 filings (patterns replayed, not the documents themselves)
+def _lines(*ls):
+    return ["\n".join(ls)]
+
+
+def test_real_pattern_split_thousands_and_roman_formula():
+    # Sun Pharma: "31 ,593.7" spacing artefact and "(Ill-IV)" OCR'd roman formula; values in INR million.
+    r = results.extract_results(_lines(
+        "Statement of consolidated results (₹ in Million)",
+        "Total revenue from operations (I)  161,987.1  152,998.8  144,783.1  314,985.9",
+        "II  Other income  5,173.2  7,236.2  4,699.2  12,409.4",
+        "Finance costs  746.7  996.7  998.6  1,743.4",
+        "Depreciation and amortisation expense  7,583.4  7,387.2  7,295.0  14,970.6",
+        "V  Profit I (loss) before exceptional items and tax (Ill-IV)  44,282.0  43,029.0  41 ,676.1  87,311.0",
+        "VI  Exceptional items (Refer Note 4 and 5)  12,688.3  2,040.9  -  14,729.2",
+        "VII  Profit I (loss) before tax (V-VI)  31 ,593.7  40,988.1  41 ,676.1  72,581.8",
+        "XI  Net Profit I (loss) after taxes  19,950.7  29,012.3  31 ,249.5  48,963.0"))
+    assert r.status == "ok"
+    assert r.metrics["pbt"]["current"] == pytest.approx(3159.37)          # 31,593.7 million -> crore
+    assert r.metrics["pbt"]["year_ago"] == pytest.approx(4167.61)
+    assert r.metrics["revenue"]["current"] == pytest.approx(16198.71)
+
+
+def test_real_pattern_curly_formula_and_canonical_finance_row():
+    # L&T: "{1-2)" mismatched bracket; an operating "Finance cost of financial services" line precedes the real one.
+    r = results.extract_results(_lines(
+        "Consolidated results  ₹ Crore",
+        "a) Revenue from operations  78749.94  67941.74  67983.53  146691.68",
+        "b) Other income (net)  2306.26  2376.73  1384.28  4682.99",
+        "b) Finance cost of financial services business and finance lease activity  1968.86  2032.66  1706.83  4001.52",
+        "f) Depreciation. amortisation. impairment and obsolescence  1036.91  1032.28  1091.77  2069.19",
+        "Finance costs  472.95  487.94  1092.70  960.89",
+        "3 Profit before exceptional items and tax {1-2)  7641.06  6922.26  6336.11  14563.32",
+        "5 Profit before tax (3+4)  7641.06  6922.26  6336.11  14563.32",
+        "7 Net profit after tax (5-6)  5915.15  4982.85  4687.09  10898.00"))
+    assert r.status == "ok"
+    assert r.metrics["ebitda"]["current"] == pytest.approx(7641.06 + 472.95 + 1036.91 - 2306.26)
+
+
+def test_ocr_garbage_is_withheld_not_shown():
+    # Scanned PDF with dropped decimal points: revenue columns 7835.93 vs 747164 -> must not be displayed.
+    r = results.extract_results(_lines(
+        "Statement of consolidated results (Amount in INR million)",
+        "Revenue from operations  7835.93  747164  646718  15.307.57",
+        "Other income  20047  25041  22275  450.88",
+        "Finance costs  823  672  1167  2995",
+        "Depreciation and amortisation expenses  412,14  34206  31885  571.52",
+        "Profit before tax  159455  157787  13534  264529",
+        "Profit for the period  129789  128439  110513  258238"))
+    assert r.status == "unreliable" and r.metrics == {}
+    assert any("withheld" in n for n in r.notes) and r.evidence                   # rows still shown as read
+
+
+def test_two_digit_year_header_confirms_columns():
+    r = results.extract_results(_lines(
+        "STATEMENT OF CONSOLIDATED FINANCIAL RESULTS (Rupees in Crores)",
+        "30-Sep-26  30-Jun-26  30-Sep-25  30-Sep-26  30-Sep-25  31-Mar-26",
+        "1  Revenue from operations  21,793.64  15,547.66  14,855.04  37,341.30",
+        "2  Other income  68.73  528.29  495.74  597.02",
+        "d) Finance costs  25.95  24.12  38.35  50.07",
+        "e) Depreciation and amortisation expense  110.06  106.95  96.28  217.01",
+        "9  Profit before tax (7+8)  532.35  868.98  923.59  1,401.33",
+        "11  Net Profit for the period/year (9-10)  410.87  717.83  745.70  1,128.70"))
+    assert r.status == "ok" and r.periods["confirmed"] and r.periods["current"] == "2026-09-30"
+    assert r.metrics["pbt"]["qoq_pct"] == pytest.approx((532.35 / 868.98 - 1) * 100)
+
+
+def test_scanned_pdf_reported_as_scanned():
+    r = results.extract_results(["Covering letter: un-audited results attached"] + [""] * 9)
+    assert r.status == "not_found" and "scanned" in r.notes[0]
+
+
+def test_fake_bold_duplicate_glyphs_are_merged():
+    d = pymupdf.open()
+    p = d.new_page(width=842, height=595)
+    for dx in (0, 0.4):  # same text drawn twice, slightly offset
+        p.insert_text((40 + dx, 60), "Revenue from operations", fontsize=9)
+        p.insert_text((400 + dx, 60), "1,593.15", fontsize=9)
+    p.insert_text((480, 60), "1,593.15", fontsize=9)  # a genuinely repeated value in another column survives
+    text = pdf_bytes_to_pages(d.tobytes())[0]
+    assert text.count("Revenue") == 1 and text.count("1,593.15") == 2
+
+
+def test_gemini_model_discovery_prefers_newest_stable():
+    from app.llm import pick_gemini
+    avail = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.8-flash-preview-09-2026",
+             "gemini-3.1-flash-live", "gemini-3.1-flash-tts", "gemini-3.1-pro", "text-embedding-005", "gemini-3.6-flash-image"]
+    assert pick_gemini(avail) == ("gemini-3.5-flash-lite", "gemini-3.6-flash")
+    assert pick_gemini(["gemini-9.0-flash-preview-01-2030"]) == ("gemini-9.0-flash-preview-01-2030",) * 2
+    assert pick_gemini([]) == (None, None)

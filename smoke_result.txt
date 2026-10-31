@@ -1,0 +1,36 @@
+﻿..\.venv\Scripts\python.exe : model gemini-flash-latest failed for smoke (network: ReadTimeout); trying next
+At line:1 char:374
++ ... NG="utf-8"; ..\.venv\Scripts\python.exe ..\scripts\smoke_live.py IRCT ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (model gemini-fl...t); trying next:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+model gemini-3.8-flash failed for smoke (network: ReadTimeout); trying next
+model gemini-2.5-flash failed for smoke (HTTP 404 This model models/gemini-2.5-flash is no longer available to new 
+users. Please update your code to use models/gemini-3.8-flash for the latest features and improvements. We recommen); 
+trying next
+model gemini-pro-latest failed for smoke (HTTP 429 You exceeded your current quota, please check your plan and billing 
+details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To moni); 
+trying next
+model gemini-flash-latest failed for synthesis (network: ReadTimeout); trying next
+model gemini-3.8-flash failed for synthesis (HTTP 503 This model is currently experiencing high demand. Spikes in 
+demand are usually temporary. Please try again later.); trying next
+model gemini-2.5-flash failed for synthesis (HTTP 404 This model models/gemini-2.5-flash is no longer available to new 
+users. Please update your code to use models/gemini-3.8-flash for the latest features and improvements. We recommen); 
+trying next
+model gemini-pro-latest failed for synthesis (HTTP 429 You exceeded your current quota, please check your plan and 
+billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To 
+moni); trying next
+PASS  Yahoo EOD (yfinance/chart API)           0.0s  provider=yfinance ok=18/18
+PASS  NSE announcements (3 days)               3.6s  33 portfolio filings
+PASS  BSE announcements (3 days)               9.4s  33 filings, 0 failures
+PASS  Feed: fetch -> classify -> prioritise    0.1s  32 items {'high': 7, 'medium': 11, 'low': 14} [NSE=ok]
+PASS  Results PDF -> QoQ/YoY                   0.0s  RELIANCE: doc=ok extraction=ok basis=consolidated revenue=332861.0
+FAIL  LLM structured output (fast + smart)   151.1s  RuntimeError: smart: all models failed - gemini-flash-latest: network: ReadTimeout | gemini-3.8-flash: network: ReadTimeout | gemini-2.5-flash: HTTP 404 This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.8-flash for the latest features and improvements. We recommen | gemini-pro-latest: HTTP 429 You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To moni. Available: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-flash-latest', 'gemini-flash-lite-latest', 'gemini-pro-latest', 'gemini-2.5-flash-lite', 'gemini-3-flash-preview', 'gemini-3.1-pro-preview', 'gemini-3.1-pro-preview-customtools', 'gemini-3.1-flash-lite-preview', 'gemini-3.1-flash-lite', 'nano-banana-pro-preview', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-omni-flash-preview', 'gemini-omni-1.1-flash', 'gemini-3.6-flash', 'gemini-3.7-flash', 'gemini-3.8-flash', 'lyria-3-pro-preview', 'deep-research-pro-preview-12-2025']
+PASS  Screener search                          0.9s  [{'symbol': 'IRCTC', 'name': 'Indian Railway Catering & Tourism Corporation Ltd', 'url': '/company/IRCTC/'}]
+PASS  Screener company page (IRCTC)            0.0s  Indian Railway Catering & Tourism Corporation Ltd basis=consolidated ARs=8 concalls=28 capex=no
+PASS  Transcript PDF download + parse          2.2s  ok 19 pages url=https://www.bseindia.com/stockinfo/AnnPdfOpen.aspx?Pname=87a3947a-975c
+PASS  Full research report (IRCTC)           132.1s  sources=[('S1', 'ok'), ('T1', 'ok'), ('T2', 'ok'), ('T3', 'ok'), ('T4', 'ok')] guidance=ok rows=2 verified={'llm_claims': 2, 'verified': 2, 'unverified': 0, 'method': 'Each AI claim must cite a passage or metric; every number in it must appear in what it cites.'} llm_calls=6 limits=3
+LLM: {'enabled': True, 'provider': 'gemini', 'fast_model': 'gemini-flash-lite-latest', 'smart_model': 'gemini-flash-latest'}
+
+RESULT: FAILED: LLM structured output (fast + smart)
