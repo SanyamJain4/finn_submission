@@ -5,6 +5,12 @@ A mobile-first intelligence layer for a public-markets investor. FINN answers tw
 * **Push: "What changed, and should I care?"** Every exchange filing across an 18-stock portfolio is classified, ranked by materiality (with the reasons shown), and folded away if it's routine. Results filings get a first cut of Revenue / EBITDA / PBT / PAT, QoQ and YoY, read from the actual PDF. Management changes show the incoming person's profile, taken from the filing itself. End-of-day price and volume moves fire alerts at thresholds you set.
 * **Pull: "Tell me about this company."** For any NSE ticker, FINN reads the standardised statements, the latest annual report and the last four earnings-call transcripts. It then reports on trajectory, balance sheet, cash quality, **what management promised vs what it delivered**, and a bull/bear case. Every claim carries a tappable citation to a page or a computed figure.
 
+## Try it on your phone
+
+**Live link: https://finn-iljw.onrender.com/** (responsive web app, built for phone width; open it on a phone or narrow the browser window). The free host sleeps when idle, so the first load can take up to a minute.
+
+NSE and BSE block cloud IP ranges, so this hosted copy cannot reach them and serves a **real-data snapshot** captured from a laptop (the banner on Today and Alerts shows the capture time and sources). Prices, the AI briefing and research use live calls where the host can reach them. To see everything live, run it locally (see [Run it](#run-it)); there every source is fetched live.
+
 Five sections:
 
 | Section | Answers | What's there |
@@ -96,10 +102,11 @@ The unit suite covers ticker normalisation, QoQ/YoY/margin/CAGR maths (including
 | Classification, prioritisation, results extraction, EOD alerts, financial maths, guidance verdicts, grounding | Unit-tested |
 | Full UI journeys on mobile | Playwright-tested against fixtures |
 | Clean install + production start | Verified (fresh venv from `requirements.txt`) |
-| Live NSE / BSE / Yahoo / Screener / LLM calls | **Not verified by me.** The build sandbox's network blocked every one of these hosts. Run `scripts/smoke_live.py` before relying on it |
-| Docker image build | `Dockerfile` written; not built (no Docker daemon in the sandbox) |
+| Live NSE / BSE / Yahoo / Screener calls | Verified locally with `scripts/smoke_live.py IRCTC` on 31 Oct 2026: Yahoo EOD, NSE and BSE announcements, feed classification, results PDF parsing, Screener search and company page, transcript download and a full research report all passed |
+| Live LLM calls (Gemini) | Work for the briefing and research, but the smoke test's structured-output check failed on that run because of Gemini timeouts and quota limits. Model choice is configurable, and any OpenAI-compatible host (including Hugging Face) can be used instead |
+| Hosted deployment (Render, Docker) | Builds and runs. NSE and BSE return 403 to the host's IP range, so it serves the snapshot; a circuit breaker stops it retrying blocked hosts |
 
-The adapters follow these sources' public response formats as I understand them. Parsers are defensive and every failure is reported per source, but expect to adjust a selector or field name after the first live run.
+The adapters follow these sources' public response formats. Parsers are defensive and every failure is reported per source.
 
 ## Known limitations
 

@@ -9,3 +9,6 @@ frontend/dist/
 *.sqlite3*
 _dist.zip
 _update.zip
+
+.claude/
+smoke_result.txt
