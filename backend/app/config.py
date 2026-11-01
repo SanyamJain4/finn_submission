@@ -51,6 +51,9 @@ class Settings:
     llm_timeout_s: float = field(default_factory=lambda: float(_env("FINN_LLM_TIMEOUT_S", "60")))
     llm_max_calls_per_research: int = field(default_factory=lambda: int(_env("FINN_LLM_MAX_CALLS_PER_RESEARCH", "8")))
 
+    # Shared secret for POST /api/ingest (data pushed from a machine the exchanges don't block). Empty = endpoint off.
+    ingest_token: str = field(default_factory=lambda: _env("FINN_INGEST_TOKEN"))
+
     http_timeout_s: float = field(default_factory=lambda: float(_env("FINN_HTTP_TIMEOUT_S", "20")))
     max_pdf_mb: int = field(default_factory=lambda: int(_env("FINN_MAX_PDF_MB", "40")))
     cors_origins: str = field(default_factory=lambda: _env("FINN_CORS_ORIGINS", "*"))

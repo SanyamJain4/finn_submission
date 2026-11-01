@@ -48,6 +48,30 @@ def status():
             "categories": CATEGORIES, "portfolio_size": len(portfolio.portfolio())}
 
 
+MAX_INGEST_BYTES = 20 * 1024 * 1024
+
+
+@app.post("/api/ingest")
+async def ingest(request: Request):
+    """Accept a snapshot pushed by scripts/push_snapshot.py from a machine NSE/BSE don't block."""
+    import hmac
+
+    from . import snapshot
+
+    if not settings.ingest_token:
+        raise HTTPException(404, "Not found")
+    if not hmac.compare_digest(request.headers.get("x-ingest-token", ""), settings.ingest_token):
+        raise HTTPException(401, "Bad ingest token")
+    if int(request.headers.get("content-length") or 0) > MAX_INGEST_BYTES:
+        raise HTTPException(413, "Snapshot too large")
+    body = await request.json()
+    if not isinstance(body, dict) or not isinstance(body.get("files"), dict):
+        raise HTTPException(400, "Expected {\"files\": {...}}")
+    res = snapshot.ingest(body["files"])  # ValueError -> 400 via the handler above
+    log.info("snapshot ingested: %s", res)
+    return {"ok": True, **res}
+
+
 @app.get("/api/diagnostics")
 def diagnostics():
     """Probe each live source from THIS server (bypassing caches and the circuit breaker) and report what happened."""

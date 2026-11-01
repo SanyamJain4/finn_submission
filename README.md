@@ -84,6 +84,23 @@ git add data/snapshot && git commit -m "Data snapshot" && git push
 
 This captures the last 7 days of filings, EOD prices, the parsed details of the important filings, and research reports for the demo companies. When a live source fails, the server serves the snapshot and labels it ("Captured 31 Oct, 03:32 IST from BSE, Yahoo Finance"). The "last 24 hours" window is anchored to the capture time. Live sources are still tried first, so anything the host *can* reach (often Yahoo, Screener and the LLM) stays live. Research for a ticker outside the snapshot fails honestly and lists the companies that are available offline. Re-run the script to refresh.
 
+**Refreshing a hosted server without a redeploy.** Instead of committing the snapshot, push it straight to the server from the machine that can reach the exchanges:
+
+```bash
+# on the server: set FINN_INGEST_TOKEN to a long random string (without it, /api/ingest is switched off)
+# on your laptop: put the same token in .env (FINN_INGEST_TOKEN) and the server address in FINN_INGEST_URL
+cd backend
+python ../scripts/push_snapshot.py --url https://your-app.onrender.com      # capture, then push
+```
+
+The server validates the files, accepts them only if they are newer than what it already holds, and serves them immediately with the new capture time. The committed snapshot stays as the fallback: a free host loses pushed data when it restarts or redeploys, and the next push restores it. To run it on a schedule on Windows (every 6 hours):
+
+```bash
+schtasks /Create /SC HOURLY /MO 6 /TN "FINN snapshot push" /TR "cmd /c cd /d C:\path\to\finn\backend && ..\.venv\Scripts\python.exe ..\scripts\push_snapshot.py --url https://your-app.onrender.com"
+```
+
+The laptop has to be on and online when the task fires.
+
 ## Tests
 
 ```bash

@@ -10,5 +10,7 @@ services:
         value: gemini
       - key: FINN_LLM_API_KEY
         sync: false
+      - key: FINN_INGEST_TOKEN
+        sync: false
       - key: FINN_FIXTURE_MODE
         value: "0"
