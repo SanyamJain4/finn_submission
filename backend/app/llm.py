@@ -84,7 +84,7 @@ def gemini_chain(tier: str, available: list[str]) -> list[str]:
     stable versioned model, then older stable versions, then the other tier's alias."""
     fast, smart = pick_gemini(available)
     order = (["gemini-flash-lite-latest", fast, "gemini-2.5-flash-lite", "gemini-flash-latest", smart] if tier == "fast"
-             else ["gemini-flash-latest", smart, "gemini-2.5-flash", "gemini-pro-latest", "gemini-flash-lite-latest", fast])
+             else ["gemini-flash-latest", "gemini-flash-lite-latest", smart, "gemini-2.5-flash", "gemini-pro-latest", fast])
     out = []
     for m in order:
         if m and m not in out and (not available or m in available):
@@ -225,7 +225,10 @@ def complete_json(schema: type[T], prompt: str, *, tier: str = "fast", purpose: 
         return schema.model_validate(cached)
 
     failures: list[str] = []
-    for model in chain[:4]:
+    live = [m for m in chain[:6] if not storage.cache_get(f"llm:dead:{m}")]  # 404 recently (retired for new users)
+    # a model that just hit its quota or was overloaded goes to the back instead of costing retries on every request
+    ordered = [m for m in live if not storage.cache_get(f"llm:cool:{m}")] + [m for m in live if storage.cache_get(f"llm:cool:{m}")]
+    for model in ordered:
         user_prompt, last_err = prompt, ""
         for attempt in range(3):
             try:
@@ -242,13 +245,17 @@ def complete_json(schema: type[T], prompt: str, *, tier: str = "fast", purpose: 
                 storage.log_llm_call(purpose, model, False, None, None, False, f"HTTP {code} {msg}"[:300])
                 if code in (401, 403):
                     raise LLMError(f"The AI provider ({settings.llm_provider}) rejected the key (HTTP {code}): {msg}") from e
-                if code == 429 and attempt < 2:
-                    time.sleep(6 * (attempt + 1))  # free tiers rate-limit per minute
+                if code == 429 and attempt < 1:
+                    time.sleep(6)  # free tiers rate-limit per minute; one retry, then try the next model
                     continue
                 if code in (500, 502, 503, 504) and attempt < 1:
                     time.sleep(3)
                     continue
                 last_err = f"HTTP {code} {msg}".strip()
+                if code == 404:
+                    storage.cache_set(f"llm:dead:{model}", True, 86400)
+                elif code in (429, 500, 502, 503, 504):
+                    storage.cache_set(f"llm:cool:{model}", True, 180)
                 break  # 400/404/persistent overload: try the next model
             except (httpx.TimeoutException, httpx.TransportError) as e:
                 storage.log_llm_call(purpose, model, False, None, None, False, type(e).__name__)

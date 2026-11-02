@@ -18,8 +18,8 @@ Hello ENAM team,
 
 Please find my submission for the FINN build challenge.
 
-- Prototype (open on a phone): [deployed URL]
-- Repository: [GitHub URL]
+- Prototype (open on a phone): https://finn-iljw.onrender.com/ (the first load can take about a minute on the free host)
+- Repository: https://github.com/SanyamJain4/finn_submission
 - AI build history: [Claude Code session link] [other links]
 
 **What I built.** FINN is a triage tool, not a dashboard. The home screen is one sentence, for example "4 filings need you. 6 worth a glance. 7 routine, folded away." Behind it, every NSE/BSE filing across an 18-stock portfolio (15 sectors, large to small cap) is classified against your taxonomy and ranked by materiality, with the reasons shown so you can disagree with the ranking. Results filings open straight to Revenue, EBITDA, PBT and PAT versus last quarter and last year, read from the actual PDF with page references. Management changes show the incoming person's profile, taken from the "brief profile" SEBI requires in the filing itself. End-of-day price and volume alerts fire at thresholds you set. On the Pull side, any NSE ticker gets a report built only from the company's own documents. It covers trajectory, balance sheet, cash conversion, bull/bear, and the piece I care most about: promised vs delivered across the last four earnings calls. Every claim has a tappable citation.
@@ -31,7 +31,7 @@ Please find my submission for the FINN build challenge.
 4. *Cost.* The feed uses zero LLM calls. A full research report uses at most 6 (5 on a cheap model, 1 on a stronger one), and repeats are free because results are cached by prompt hash. No vector DB: BM25 over page chunks gives citable page numbers at this scale.
 5. *Honest failure.* Each source reports its own status. If the exchanges can't be reached, FINN says so instead of showing a "quiet day". No data is ever invented.
 
-**Deliberately left out.** Real push notifications (alerts are check-on-open, end-of-day), OCR for scanned filings, chat, and login. I'd rather ship two workflows that work than six that half-work.
+**Deliberately left out.** Real push notifications (alerts are check-on-open, end-of-day), OCR for scanned filings, live intraday prices, and login. I'd rather ship two workflows that work than six that half-work.
 
 **Next.** A scheduled check with web-push. Learning the priority weights from what the investor opens and dismisses. A running management-credibility score across all past calls. Tracking which questions analysts keep asking quarter over quarter.
 

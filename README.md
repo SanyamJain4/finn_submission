@@ -72,7 +72,7 @@ One Docker image builds the React app and serves it from FastAPI.
 
 ### Hosting behind exchange IP blocks (important)
 
-NSE and BSE block most cloud and datacenter IP ranges (Render, Railway, AWS, GCP…), so a hosted FINN usually can't fetch filings itself. You'll see this as *"Couldn't reach the exchanges"*, and Settings → **Test data sources from this server** shows exactly which sources are blocked.
+NSE and BSE block most cloud and datacenter IP ranges (Render, Railway, AWS, GCP…), so a hosted FINN usually can't fetch filings itself. You'll see this as *"Couldn't reach the exchanges"*, and Account (the profile icon) → **Test data sources from this server** shows exactly which sources are blocked.
 
 FINN handles this with a **real-data snapshot**:
 

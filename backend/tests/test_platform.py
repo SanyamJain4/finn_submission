@@ -108,7 +108,8 @@ AVAILABLE = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-preview-tts
 
 def test_gemini_chain_prefers_latest_aliases():
     assert llm.gemini_chain("fast", AVAILABLE)[:3] == ["gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-2.5-flash-lite"]
-    assert llm.gemini_chain("smart", AVAILABLE)[:3] == ["gemini-flash-latest", "gemini-3.8-flash", "gemini-2.5-flash"]
+    # the lite alias is second so a quota-limited or overloaded big model costs one failure, not a walk down the list
+    assert llm.gemini_chain("smart", AVAILABLE)[:3] == ["gemini-flash-latest", "gemini-flash-lite-latest", "gemini-3.8-flash"]
     assert llm.gemini_chain("fast", ["gemini-2.5-flash"]) == ["gemini-2.5-flash"]       # only what exists
 
 

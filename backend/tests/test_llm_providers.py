@@ -86,3 +86,62 @@ def test_403_trips_breaker(monkeypatch):
     assert msgs[:3] == ["HTTP 403"] * 3
     assert all("unreachable" in m for m in msgs[3:])
     http._breaker.clear()
+
+
+def test_dead_model_is_skipped_and_chain_reaches_the_working_model(monkeypatch):
+    from pydantic import BaseModel
+
+    from app import storage
+
+    class Out(BaseModel):
+        a: int
+
+    monkeypatch.setattr(type(settings), "llm_enabled", property(lambda s: True))
+    monkeypatch.setattr(llm, "_chain", lambda tier: ["gone", "busy1", "busy2", "busy3", "busy4", "good"])
+    calls = []
+
+    def fake(model, system, prompt, max_tokens):
+        calls.append(model)
+        if model == "good":
+            return '{"a": 1}', 1, 1
+        code = 404 if model == "gone" else 400
+        req = httpx.Request("POST", "https://x")
+        raise httpx.HTTPStatusError("x", request=req, response=httpx.Response(code, request=req, json={"error": {"message": "nope"}}))
+
+    monkeypatch.setattr(llm, "_call_provider", fake)
+    storage.cache_set("llm:dead:gone", None, 0)
+    assert llm.complete_json(Out, "p", tier="smart", purpose="test", cache_ttl_s=0).a == 1
+    assert calls[-1] == "good" and storage.cache_get("llm:dead:gone")
+    calls.clear()
+    assert llm.complete_json(Out, "p2", tier="smart", purpose="test", cache_ttl_s=0).a == 1
+    assert "gone" not in calls
+
+
+def test_quota_limited_model_is_tried_last_on_the_next_request(monkeypatch):
+    from pydantic import BaseModel
+
+    from app import storage
+
+    class Out(BaseModel):
+        a: int
+
+    monkeypatch.setattr(type(settings), "llm_enabled", property(lambda s: True))
+    monkeypatch.setattr(llm, "_chain", lambda tier: ["big", "small"])
+    monkeypatch.setattr(llm.time, "sleep", lambda s: None)
+    storage.cache_set("llm:cool:big", None, 0)
+    storage.cache_set("llm:cool:small", None, 0)
+    calls = []
+
+    def fake(model, system, prompt, max_tokens):
+        calls.append(model)
+        if model == "small":
+            return '{"a": 1}', 1, 1
+        req = httpx.Request("POST", "https://x")
+        raise httpx.HTTPStatusError("x", request=req, response=httpx.Response(429, request=req, json={"error": {"message": "quota"}}))
+
+    monkeypatch.setattr(llm, "_call_provider", fake)
+    assert llm.complete_json(Out, "q1", tier="smart", purpose="t", cache_ttl_s=0).a == 1
+    assert calls == ["big", "big", "small"]            # one retry on the 429, then the next model
+    calls.clear()
+    assert llm.complete_json(Out, "q2", tier="smart", purpose="t", cache_ttl_s=0).a == 1
+    assert calls == ["small"]                          # big is cooling down, so small goes first

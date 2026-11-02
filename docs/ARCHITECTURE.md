@@ -5,14 +5,35 @@
 ```
 React (Vite, TS)  ──/api──▶  FastAPI ─┬─ push/      sources (NSE→BSE) · classify · prioritise · results · people · service
  Today / Alerts /             │        ├─ market.py  yfinance → Yahoo chart API · anomaly rules
- Research / Settings          │        ├─ research/  screener · analysis · guidance · service (jobs)
+ Research / Copilot /         │        ├─ research/  screener · analysis · guidance · service (jobs)
+ Portfolio / Account          │        ├─ briefing / copilot / holdings   grounded answers over FINN's own data
                               │        ├─ documents  PDF → page text (row-preserving) · chunking · BM25
-                              │        ├─ llm.py     fast/smart routing · JSON schemas · cache · usage log
+                              │        ├─ llm.py     fast/smart routing · JSON schemas · cache · usage log · fallbacks
+                              │        ├─ snapshot   real-data fallback + /api/ingest (pushed from a laptop)
                               │        └─ http.py    host allowlist · politeness · retries · circuit breaker
                               └── SQLite: TTL cache, documents by content hash, LLM usage, preferences
 ```
 
 One process, one SQLite file, one Docker image. There's no vector DB, no queue and no agent framework; at this scale each would add moving parts without improving the answer.
+
+## Where data lives
+
+* **Server:** market and filing data, parsed documents, LLM cache and usage (SQLite in `FINN_DATA_DIR`).
+* **Browser:** holdings, alert read/acknowledged states, profile and Copilot history (localStorage). The server only values holdings sent with a request, so a shared demo link never mixes two people's data.
+
+## Hosting and the exchange block
+
+NSE and BSE refuse most cloud IP ranges (a hosted copy gets HTTP 403 on every call). Yahoo, Screener, the BSE PDF host and the LLM provider are reachable. FINN handles it in three layers:
+
+1. **Fail fast.** A circuit breaker counts network errors *and* 403s per host; after three, the host is skipped for two minutes, so the feed falls back in seconds instead of crawling through every company.
+2. **Snapshot fallback.** `scripts/make_snapshot.py` runs on a machine the exchanges don't block and writes real, already-processed data (filings, EOD prices, parsed filing details, research reports) to `backend/data/snapshot/`. When live sources fail the server serves it, labelled with the capture time and sources. It is never mixed silently with live data and never synthetic.
+3. **Push without a redeploy.** `scripts/push_snapshot.py` captures a snapshot and POSTs it to `/api/ingest` (shared token in `FINN_INGEST_TOKEN`; the endpoint is off when unset). The server validates file names and shapes, refuses anything older than what it already holds, and swaps the new copy in atomically. The committed snapshot stays as the fallback and supplies reports a push omits. A free host loses pushed data on restart; the next push restores it.
+
+## Copilot, briefing and holdings
+
+* **Briefing:** a handful of lines generated from the feed and EOD data. Every line must cite a fact id and every number in it must appear in that fact; unverifiable lines are dropped, and the rule-based briefing is used if none survive.
+* **Copilot:** retrieves from FINN's own data only (prices, filings and parsed results, saved research reports, the caller's holdings), asks the smart model for cited blocks, then checks each block's numbers against its sources and flags what it cannot support. Without an LLM it returns the sources it found.
+* **Holdings:** quantity and average price in the browser; the server values them against the latest close (value, day change, unrealised P&L, sector and market-cap allocation).
 
 ## Push pipeline
 
@@ -59,19 +80,22 @@ resolve (portfolio / ticker / Screener search)
 | Research report | 1 fast (business) + ≤4 fast (guidance) + 1 smart (synthesis) = **≤6**, capped by config |
 | Repeat report within 24h / identical prompt within 30 days | 0 (report cache / prompt-hash cache) |
 
-Retrieval keeps prompts small: 5–7 passages of ~1,400 characters each, never whole documents. Token usage per model is logged and shown in Settings.
+Retrieval keeps prompts small: 5–7 passages of ~1,400 characters each, never whole documents. Token usage per model is logged and shown on the Account page.
+
+**Provider routing and resilience.** `FINN_LLM_PROVIDER` is `gemini`, `anthropic` or `openai` (any OpenAI-compatible host via `FINN_LLM_BASE_URL`: Groq, OpenRouter, Hugging Face's router, and so on). For Gemini the model chain is discovered from the key's model list, with the `-latest` aliases first. A model that returns 404 is skipped for a day; one that hits quota or is overloaded gets one short retry, then goes to the back of the line for three minutes. The chain tries up to six models, so a retired or rate-limited big model costs one failed call instead of a minute of retries. A key rejection is reported with the provider's name, and the Copilot shows a short reason instead of the raw error.
 
 ## Reliability and safety
 
 * Per-source status is surfaced on every feed and report. Nothing is invented on failure. When live data fails, the last cached EOD data can be shown, labelled as such.
-* **Circuit breaker:** three consecutive network failures to a host skip it for two minutes, so an outage costs seconds rather than minutes. yfinance is time-boxed at 25s.
+* **Circuit breaker:** three consecutive network failures or HTTP 403s from a host skip it for two minutes, so an outage or an IP block costs seconds rather than minutes. yfinance is time-boxed at 25s.
+* **Ingest endpoint:** constant-time token comparison, a 20 MB cap, a fixed whitelist of file names (no paths), and shape checks before anything is written.
 * **SSRF:** the app only fetches allow-listed hosts. Document links discovered on Screener may point to company IR sites, which are allowed only over https to public IPs, re-checked after redirects. User input is never used as a URL.
 * **Prompt injection:** source text is wrapped as untrusted `<document>` data and the model has no tools. The worst an injected instruction can do is corrupt a field, which the grounding checks then catch.
 * All inputs are validated (pydantic), and errors come back as a consistent JSON shape.
 
 ## Deliberately left out
 
-Authentication, push notifications/scheduling, OCR, a vector store, chat. The brief rewards "thin but working". A chat box over this data would have been the obvious interaction model; triage plus cited research is the point of view instead.
+Authentication, push notifications/scheduling, OCR, a vector store, live intraday prices. The brief rewards "thin but working". Triage plus cited research is the point of view; the Copilot is a convenience over the same grounded data, not a general chatbot.
 
 ## Next
 
